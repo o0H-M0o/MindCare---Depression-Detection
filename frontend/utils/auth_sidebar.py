@@ -241,7 +241,6 @@ def render_forgot_password_form(auth_service: AuthService):
                     
                     if success:
                         st.success("Check your email for the reset link!")
-                        st.info("Click the link in the email to reset your password.")
                     else:
                         st.error(f"Error: {error}")
 

@@ -123,7 +123,7 @@ users_need_attention = []
 users_doing_well = []
 users_no_data = []
 
-with st.spinner("Analyzing all users..."):
+with st.spinner("Analyzing all users...It might take some time to load."):
     for user in linked_users:
         try:
             user_df = prepare_dashboard_data(DBClient(user_id=user['id']), window_days=90)
