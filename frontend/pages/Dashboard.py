@@ -253,7 +253,7 @@ fig_bdi.add_trace(go.Scatter(
     customdata=display_df["bdi_severity"]
 ))
 fig_bdi.update_layout(yaxis=dict(title="Emotional Distress Level", range=[0,63]), xaxis=dict(title="Date"), template="plotly_white", height=380, margin=dict(l=20,r=20,t=20,b=20), showlegend=False)
-st.plotly_chart(fig_bdi,width='stretch')
+st.plotly_chart(fig_bdi,width='stretch', key=f"fig_bdi_{user_id}_{selected_timeframe}")
 st.divider()
 
 # -----------------------------
@@ -276,7 +276,7 @@ if not display_df.empty:
         fig_sent.update_layout(height=300,template="plotly_white",showlegend=False,margin=dict(l=20,r=20,t=20,b=20))
         fig_sent.update_xaxes(tickfont=dict(size=18))
         fig_sent.update_traces(width=0.6)  # Consistent bar width
-        st.plotly_chart(fig_sent,width='stretch')
+        st.plotly_chart(fig_sent,width='stretch', key=f"fig_sent_{user_id}_{selected_timeframe}")
     with col2:
         st.subheader("Distress Severity Distribution")
         if 'bdi_severity' in display_df.columns:
@@ -289,7 +289,7 @@ if not display_df.empty:
             )
             fig_cat.update_layout(height=300,template="plotly_white",showlegend=False,margin=dict(l=20,r=20,t=20,b=20))
             fig_cat.update_traces(width=0.6)  # Consistent bar width
-            st.plotly_chart(fig_cat,width='stretch')
+            st.plotly_chart(fig_cat,width='stretch', key=f"fig_cat_{user_id}_{selected_timeframe}")
         else:
             st.info("No BDI category data available.")
 else:
