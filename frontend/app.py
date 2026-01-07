@@ -151,7 +151,7 @@ components.html(
                                         overlay.innerHTML =
                                             '<div style="max-width: 900px; margin: 0 auto;">'
                                             + '<div style="font-weight: 600; margin-bottom: 8px;">Password recovery detected</div>'
-                                            + '<button id="mindcare-recovery-continue" style="padding: 8px 14px; border-radius: 6px; border: 0; cursor: pointer;">Continue to reset password</button>'
+                                            + '<button id="mindcare-recovery-continue" style="padding: 8px 14px; border-radius: 6px; border: 2px solid #fff; background: #4CAF50; color: #fff; cursor: pointer; font-weight: 600;">Continue to reset password</button>'
                                             + '</div>';
 
                                         doc.body.appendChild(overlay);
