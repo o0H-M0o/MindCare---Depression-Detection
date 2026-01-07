@@ -1,0 +1,34 @@
+# Frontend requirements for Streamlit app
+
+# Streamlit Framework
+streamlit==1.51.0
+
+# Data visualization
+plotly==5.18.0
+pandas==2.1.4
+
+# API Communication
+requests==2.31.0
+
+# Database
+supabase==2.0.3
+
+# Utilities
+python-dotenv==1.0.0
+
+# Gemini (matches `import google.generativeai as genai`)
+google-generativeai
+
+# Sentiment analysis (matches backend/model/sentiment_model.py)
+transformers>=4.35.0
+torch>=2.1.0
+scipy>=1.11.0
+numpy>=1.24.0
+
+# Export (matches frontend/utils/export_utils.py)
+kaleido
+reportlab
+
+# Optional dashboard features (wordcloud sections)
+wordcloud
+matplotlib
