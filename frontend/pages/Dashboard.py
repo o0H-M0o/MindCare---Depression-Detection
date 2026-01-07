@@ -10,17 +10,57 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
+import json
 import sys
 from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
+# Add backend path for imports (same pattern as Viewer/Institution dashboards)
+backend_path = Path(__file__).parent.parent.parent / "backend"
+sys.path.append(str(backend_path))
+
 from utils.db_client import DBClient
 from utils.auth import init_auth_service
 from utils.auth_sidebar import render_auth_sidebar
 from utils.depression_detection import analyze_depression, prepare_dashboard_data, evaluate_recent_data_requirements
-from utils.export_utils import df_to_csv_bytes, dashboard_to_pdf_bytes
+from utils.export_utils import df_to_csv_bytes, figs_to_pdf_bytes
+
+# Backend prompt/model logic lives in backend/model
+_RECOMMENDER_IMPORT_ERROR = None
+try:
+    import importlib
+    import model.recommendation as _rec
+
+    if not hasattr(_rec, 'generate_self_support_recommendation'):
+        _rec = importlib.reload(_rec)
+
+    generate_self_support_recommendation = getattr(_rec, 'generate_self_support_recommendation', None)
+    if generate_self_support_recommendation is None:
+        raise ImportError("generate_self_support_recommendation not found in model.recommendation")
+
+    _RECOMMENDER_AVAILABLE = True
+except Exception as e:
+    generate_self_support_recommendation = None
+    _RECOMMENDER_AVAILABLE = False
+    _RECOMMENDER_IMPORT_ERROR = str(e)
+
+
+# Cached AI recommendation function
+if _RECOMMENDER_AVAILABLE:
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def _cached_self_recommendation(symptoms_json: str, overall_severity: str, trend_direction: str) -> str:
+        top_symptoms = json.loads(symptoms_json)
+        return generate_self_support_recommendation(
+            overall_severity=overall_severity,
+            trend_direction=trend_direction,
+            top_symptoms=top_symptoms,
+            model_name='gemma-3-27b-it',
+        )
+else:
+    def _cached_self_recommendation(symptoms_json: str, overall_severity: str, trend_direction: str) -> str:
+        return ""
 
 # -----------------------------
 # PAGE CONFIG
@@ -66,6 +106,58 @@ if not req.get('meets', False):
     st.stop()
 
 overall_analysis = analyze_depression(df, window_days=30)
+
+
+def _get_top_symptoms(df_in: pd.DataFrame, top_n: int = 5, window_days: int = 30) -> pd.DataFrame:
+    if df_in is None or df_in.empty or 'assessment_data' not in df_in.columns:
+        return pd.DataFrame()
+    try:
+        recent_cutoff = datetime.now() - timedelta(days=window_days)
+        recent_df = df_in[df_in['datetime'] >= recent_cutoff].copy()
+    except Exception:
+        recent_df = df_in.copy()
+    if recent_df.empty:
+        return pd.DataFrame()
+
+    from utils.depression_detection import BDI_SYMPTOM_NAMES
+
+    symptom_totals = {}
+    symptom_counts = {}
+    for _, row in recent_df.iterrows():
+        assessment = row.get('assessment_data', {})
+        if not isinstance(assessment, dict):
+            continue
+        for symptom_key, symptom_data in assessment.items():
+            score = None
+            if isinstance(symptom_data, dict):
+                for possible_key in ['level', 'score', 'value']:
+                    if possible_key in symptom_data and isinstance(symptom_data[possible_key], (int, float)):
+                        score = float(symptom_data[possible_key])
+                        break
+                if score is not None and 0 <= score <= 3:
+                    symptom_name = BDI_SYMPTOM_NAMES.get(symptom_key, symptom_data.get('symptom', symptom_key.replace('_', ' ').title()))
+                    symptom_totals[symptom_name] = symptom_totals.get(symptom_name, 0.0) + score
+                    symptom_counts[symptom_name] = symptom_counts.get(symptom_name, 0) + 1
+            elif isinstance(symptom_data, (int, float)):
+                score = float(symptom_data)
+                if 0 <= score <= 3:
+                    symptom_name = BDI_SYMPTOM_NAMES.get(symptom_key, symptom_key.replace('_', ' ').title())
+                    symptom_totals[symptom_name] = symptom_totals.get(symptom_name, 0.0) + score
+                    symptom_counts[symptom_name] = symptom_counts.get(symptom_name, 0) + 1
+
+    if not symptom_totals:
+        return pd.DataFrame()
+
+    symptom_avgs = []
+    for symptom, total in symptom_totals.items():
+        count = symptom_counts.get(symptom, 0)
+        if count > 0:
+            symptom_avgs.append({'symptom': symptom, 'average_score': total / count, 'entries_count': count})
+
+    result_df = pd.DataFrame(symptom_avgs)
+    if result_df.empty:
+        return result_df
+    return result_df.sort_values('average_score', ascending=False).head(top_n)
 
 # -----------------------------
 # DASHBOARD HEADER
@@ -203,7 +295,51 @@ else:
 st.divider()
 
 # -----------------------------
-# SECTION 4: GENTLE GUIDANCE
+# SECTION 4: AI SUPPORT SUGGESTIONS (only when depression detected)
+# -----------------------------
+ai_recommendation_text = ""
+if overall_analysis.get('depression_detected', False):
+    st.subheader("✨ AI Support Suggestions")
+    st.caption("This is not a diagnosis or medical advice.")
+
+    if not _RECOMMENDER_AVAILABLE:
+        msg = "AI support suggestions are unavailable (recommender module could not be loaded)."
+        if _RECOMMENDER_IMPORT_ERROR:
+            msg += f"\n\nDetails: {_RECOMMENDER_IMPORT_ERROR}"
+        st.info(msg)
+    else:
+        top_symptoms_df = _get_top_symptoms(df, top_n=5, window_days=30)
+        if top_symptoms_df is None or top_symptoms_df.empty:
+            st.info("AI support suggestions are unavailable because there is no symptom data to summarize.")
+        else:
+            symptoms_payload = [
+                {
+                    'symptom': str(r.get('symptom', '')).strip(),
+                    'average_score': float(r.get('average_score', 0.0)),
+                    'entries_count': int(r.get('entries_count', 0)),
+                }
+                for _, r in top_symptoms_df.iterrows()
+            ]
+            symptoms_json = json.dumps(symptoms_payload, ensure_ascii=False)
+
+            with st.spinner('Generating support suggestions...'):
+                try:
+                    ai_recommendation_text = _cached_self_recommendation(
+                        symptoms_json,
+                        str(overall_analysis.get('overall_severity', 'N/A')),
+                        str(overall_analysis.get('trend_direction', 'Stable')),
+                    )
+                except Exception as e:
+                    ai_recommendation_text = ''
+                    st.warning(f"AI support suggestions could not be generated: {e}")
+
+            if ai_recommendation_text:
+                st.write(ai_recommendation_text)
+
+    st.divider()
+
+# -----------------------------
+# SECTION 5: GENTLE GUIDANCE
 # -----------------------------
 if analysis["depression_detected"]:
     st.info("💛 **You’re not alone.** Persistent distress can be challenging. Consider talking to someone you trust or a mental health professional.")
@@ -211,6 +347,7 @@ else:
     st.info("🌱 **You’re doing okay.** Keep journaling — reflection helps build awareness.")
 
 st.divider()
+
 # -----------------------------
 # EXPORT CONTROLS
 # -----------------------------
@@ -238,31 +375,31 @@ with export_col2:
     # PDF Export - comprehensive dashboard report
     try:
         # Collect all dashboard data for comprehensive PDF
-        dashboard_data = {
-            'status_text': status_text,
-            'metrics': {
-                'Recent Emotional Distress Level': f"{overall_analysis['overall_severity']}",
-                'Recent Trend': f"{overall_analysis['trend_direction']}",
-                'Current Streak': f"{streak} days",
-                'Recent Mood': f"{display_sentiment_label}"
-            },
-            'guidance': "You are not alone. Persistent distress can be challenging. Consider talking to someone you trust or a mental health professional." if not overall_analysis["depression_detected"] else "You are not alone. Persistent distress can be challenging. Consider talking to someone you trust or a mental health professional.",
-            'figs': []
-        }
-        
-        # Add available charts
+        collected_figs = []
         if 'fig_bdi' in locals():
-            dashboard_data['figs'].append(locals()['fig_bdi'])
+            collected_figs.append({'fig': locals()['fig_bdi'], 'title': 'Emotional Distress Over Time'})
         if 'fig_sent' in locals():
-            dashboard_data['figs'].append(locals()['fig_sent'])
+            collected_figs.append({'fig': locals()['fig_sent'], 'title': 'Mood Tone'})
         if 'fig_cat' in locals():
-            dashboard_data['figs'].append(locals()['fig_cat'])
+            collected_figs.append({'fig': locals()['fig_cat'], 'title': 'Distress Severity Distribution'})
         
-        if dashboard_data['figs']:
+        if collected_figs:
             with st.spinner("Preparing comprehensive PDF report..."):
                 generation_time = datetime.now().strftime('%B %d, %Y at %I:%M %p')
                 pdf_title = f"MindCare Well-being Report - {user_name} (Generated on {generation_time})"
-                pdf_bytes = dashboard_to_pdf_bytes(dashboard_data, title=pdf_title)
+                pdf_bytes = figs_to_pdf_bytes(
+                    collected_figs,
+                    title=pdf_title,
+                    status_text=status_text,
+                    metrics={
+                        'Recent Emotional Distress Level': f"{overall_analysis['overall_severity']}",
+                        'Recent Trend': f"{overall_analysis['trend_direction']}",
+                        'Current Streak': f"{streak} days",
+                        'Recent Mood': f"{display_sentiment_label}"
+                    },
+                    guidance="You are not alone. Persistent distress can be challenging. Consider talking to someone you trust or a mental health professional." if not overall_analysis["depression_detected"] else "You are not alone. Persistent distress can be challenging. Consider talking to someone you trust or a mental health professional.",
+                    ai_recommendation=ai_recommendation_text,
+                )
             if pdf_bytes:
                 st.download_button(
                     label="📊 Download PDF Report",

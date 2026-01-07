@@ -189,11 +189,11 @@ def build_support_recommendation_prompt(
     - entries_count: int
     """
     return (
-        "You are assisting an institution staff member/support person reviewing a student's well-being trends. "
-        "Based on the student's top BDI-related symptoms (with average severity scores 0-3) and recent trend, "
+        "You are assisting an institution staff member/support person reviewing an individual's well-being trends. "
+        "Based on the individual's top BDI-related symptoms (with average severity scores 0-3) and recent trend, "
         "write a short, practical recommendation for supportive follow-up.\n\n"
         "Constraints:\n"
-        "- Do NOT diagnose or label the student.\n"
+        "- Do NOT diagnose or label the individual.\n"
         "- Be calm, trauma-informed, and respectful.\n"
         "- Do NOT request or include any personal identifying details.\n"
         "- Focus on actionable next steps the staff/support person can take.\n"
@@ -205,4 +205,38 @@ def build_support_recommendation_prompt(
         "- Title line (1 sentence)\n"
         "- 4-6 bullet points with concrete actions\n"
         "- One short closing disclaimer about seeking professional help\n"
+    )
+
+
+def build_self_support_recommendation_prompt(
+    *,
+    symptoms_json: str,
+    overall_severity: str,
+    trend_direction: str,
+) -> str:
+    """Build a non-diagnostic self-support prompt for the individual user.
+
+    The input symptoms_json should be a JSON array of objects with:
+    - symptom: str
+    - average_score: float (0-3)
+    - entries_count: int
+    """
+    return (
+        "You are a supportive mental health assistant writing for the individual user (the person who wrote the journal entries). "
+        "Based on their top BDI-related symptoms (with average severity scores 0-3) and recent trend, "
+        "write a short, practical set of self-support suggestions tailored to them.\n\n"
+        "Safety + constraints (must follow):\n"
+        "- Do NOT diagnose, label, or claim certainty.\n"
+        "- Do NOT give medical advice (no medication changes, no treatment plans).\n"
+        "- Be calm, supportive, and non-judgmental.\n"
+        "- Avoid mentioning private details; only reference the provided symptom summary.\n"
+        "- Provide coping steps the user can try today (small, realistic actions).\n"
+        "- If the symptoms include suicidal thoughts/wishes, include urgent safety guidance: encourage reaching out immediately to local emergency services or a trusted person and professional help.\n\n"
+        f"Context:\n- Overall severity: {overall_severity}\n- Trend: {trend_direction}\n\n"
+        "Top symptoms (JSON array of objects with symptom, average_score, entries_count):\n"
+        f"{symptoms_json}\n\n"
+        "Output format:\n"
+        "- Title line (1 sentence, addressed to 'you')\n"
+        "- 4-6 bullet points (actionable self-care + help-seeking steps)\n"
+        "- One short closing disclaimer: this is not a diagnosis and professional support can help\n"
     )
