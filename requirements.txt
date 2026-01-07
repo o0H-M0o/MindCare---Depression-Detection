@@ -11,7 +11,7 @@ streamlit==1.51.0
 
 # Data visualization
 plotly==5.18.0
-pandas==2.1.4
+pandas
 
 # API Communication
 requests==2.31.0
