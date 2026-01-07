@@ -251,6 +251,7 @@ if not display_df.empty:
         )
         fig_sent.update_layout(height=300,template="plotly_white",showlegend=False,margin=dict(l=20,r=20,t=20,b=20))
         fig_sent.update_xaxes(tickfont=dict(size=18))
+        fig_sent.update_traces(width=0.6)  # Consistent bar width
         st.plotly_chart(fig_sent,width='stretch')
     with col2:
         st.subheader("Distress Severity Distribution")
@@ -263,6 +264,7 @@ if not display_df.empty:
                 color_discrete_sequence=['#2E86C1']
             )
             fig_cat.update_layout(height=300,template="plotly_white",showlegend=False,margin=dict(l=20,r=20,t=20,b=20))
+            fig_cat.update_traces(width=0.6)  # Consistent bar width
             st.plotly_chart(fig_cat,width='stretch')
         else:
             st.info("No BDI category data available.")
