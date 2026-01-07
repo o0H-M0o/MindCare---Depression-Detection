@@ -4,11 +4,25 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+
+def _get_secret(key: str) -> str | None:
+    """Read config from env first, then Streamlit secrets if available."""
+    val = os.getenv(key)
+    if val:
+        return val
+    try:
+        import streamlit as st
+
+        # st.secrets behaves like a dict
+        return st.secrets.get(key)  # type: ignore[attr-defined]
+    except Exception:
+        return None
+
 class Config:
     """Application configuration"""
     
     # Gemini API Configuration
-    GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+    GOOGLE_API_KEY = _get_secret('GOOGLE_API_KEY')
     GEMINI_MODEL = 'gemma-3-27b-it'  
     
     # Model Generation Config
@@ -17,8 +31,8 @@ class Config:
     TOP_K = 10
     
     # Supabase Configuration
-    SUPABASE_URL = os.getenv('SUPABASE_URL')
-    SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+    SUPABASE_URL = _get_secret('SUPABASE_URL')
+    SUPABASE_KEY = _get_secret('SUPABASE_KEY')
     
     # BDI Configuration
     BDI_QUESTIONS = 21

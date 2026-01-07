@@ -505,9 +505,18 @@ def init_auth_service() -> AuthService:
         AuthService instance
     """
     from supabase import create_client
-    
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY")
+
+    def _get_secret(k: str):
+        v = os.getenv(k)
+        if v:
+            return v
+        try:
+            return st.secrets.get(k)
+        except Exception:
+            return None
+
+    url = _get_secret("SUPABASE_URL")
+    key = _get_secret("SUPABASE_KEY")
     
     if not url or not key:
         st.error("⚠️ Supabase configuration missing. Please set SUPABASE_URL and SUPABASE_KEY.")
