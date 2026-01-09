@@ -604,7 +604,7 @@ for seg_name in sorted(users_by_segment.keys(), key=_segment_sort_key):
                 show_analysis = st.checkbox(
                     "Show analysis",
                     key=show_key,
-                    help="To keep the page fast, analysis is loaded only for users you expand and enable here.",
+                    help="Click to expand the user's detailed analysis (may take time to load data and charts).",
                 )
 
                 if not show_analysis:

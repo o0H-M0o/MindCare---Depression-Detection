@@ -38,8 +38,3 @@ reportlab
 # Optional dashboard features (wordcloud sections)
 wordcloud
 matplotlib
-reportlab
-
-# Optional dashboard features (wordcloud sections)
-wordcloud
-matplotlib
