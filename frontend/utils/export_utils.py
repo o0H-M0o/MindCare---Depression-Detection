@@ -174,7 +174,7 @@ def dashboard_to_pdf_bytes(dashboard_data, title="Dashboard Report"):
                     fig = fig_item
                 
                 try:
-                    img_bytes = pio.to_image(fig, format='png', width=500, height=400)
+                    img_bytes = pio.to_image(fig, format='png', width=500, height=400, engine='kaleido')
                     img = RLImage(io.BytesIO(img_bytes), width=5*inch, height=4*inch)
                     story.append(img)
                     story.append(Spacer(1, 12))

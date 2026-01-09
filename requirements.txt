@@ -33,7 +33,7 @@ numpy>=1.24.0
 
 # Export (matches frontend/utils/export_utils.py)
 kaleido==0.2.1
-reportlab
+reportlab==4.0.7
 
 # Optional dashboard features (wordcloud sections)
 wordcloud
