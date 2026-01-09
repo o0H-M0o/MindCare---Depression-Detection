@@ -35,6 +35,10 @@ def dashboard_to_pdf_bytes(dashboard_data, title="Dashboard Report"):
     """
     try:
         import plotly.io as pio
+        # Ensure kaleido is available and configured
+        pio.kaleido.scope.default_format = "png"
+        pio.kaleido.scope.default_width = 500
+        pio.kaleido.scope.default_height = 400
     except Exception as e:
         raise ImportError("plotly.io.to_image requires the 'kaleido' package. Install with: pip install kaleido")
 
