@@ -524,3 +524,4 @@ def init_auth_service() -> AuthService:
     
     supabase = create_client(url, key)
     return AuthService(supabase)
+

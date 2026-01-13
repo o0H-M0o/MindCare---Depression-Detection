@@ -76,7 +76,9 @@ class DBClient:
         self, 
         text: str, 
         entry_date: datetime,
-        mood_rating: Optional[int] = None
+        mood_rating: Optional[int] = None,
+        entry_type: str = 'by_typing',
+        uploaded_file: Optional[str] = None
     ) -> Optional[str]:
         """
         Save a journal entry to the database
@@ -93,14 +95,23 @@ class DBClient:
             try:
                 date_part = entry_date.date() if isinstance(entry_date, datetime) else entry_date
                 time_part = entry_date.time() if isinstance(entry_date, datetime) else datetime.now().time()
-                
-                entry = self.supabase.table('journal_entries').insert({
+
+                payload = {
                     'user_id': self.user_id,
                     'entry_text': text,
                     'entry_date': date_part.isoformat(),
                     'entry_time': time_part.isoformat(),
-                    'analysis_status': 'pending'  # Will be processed by background worker
-                }).execute()
+                    'analysis_status': 'pending',  # Will be processed by background worker
+                    'type': entry_type,
+                    'uploaded_file': uploaded_file,
+                }
+
+                try:
+                    entry = self.supabase.table('journal_entries').insert(payload).execute()
+                except Exception:
+                    # Backward-compatible fallback if the 'type' column doesn't exist yet.
+                    payload.pop('type', None)
+                    entry = self.supabase.table('journal_entries').insert(payload).execute()
                 
                 if entry.data and len(entry.data) > 0:
                     return entry.data[0]['id']
@@ -115,6 +126,8 @@ class DBClient:
                 'id': entry_id,
                 'text': text,
                 'date': entry_date,
+                'type': entry_type,
+                'uploaded_file': uploaded_file,
                 'created_at': datetime.now()
             }
             
@@ -124,7 +137,8 @@ class DBClient:
     def get_recent_entries(
         self, 
         days: Optional[int] = 7, 
-        limit: int = 10
+        limit: int = 10,
+        entry_type: Optional[str] = None
     ) -> List[Dict]:
         """
         Get recent journal entries
@@ -142,6 +156,9 @@ class DBClient:
                 query = self.supabase.table('journal_entries')\
                     .select('*')\
                     .eq('user_id', self.user_id)
+
+                if entry_type:
+                    query = query.eq('type', entry_type)
                 
                 # Apply date filter only if days is specified
                 if days is not None:
@@ -164,7 +181,9 @@ class DBClient:
                     'datetime': f"{e['entry_date']} {e.get('entry_time', '00:00:00')}",  # Combined for display
                     'created_at': f"{e['entry_date']} {e.get('entry_time', '00:00:00')}",
                     'analysis_status': e.get('analysis_status', 'pending'),  
-                    'analysis_error': e.get('analysis_error')  
+                    'analysis_error': e.get('analysis_error'),
+                    'type': e.get('type', 'by_typing'),
+                    'uploaded_file': e.get('uploaded_file'),
                 } for e in entries.data] if entries.data else []
                 
                 # Sort by datetime descending to ensure correct order
@@ -183,8 +202,57 @@ class DBClient:
             else:
                 # Return all entries when days is None
                 filtered = self._mock_data['entries']
+
+            if entry_type:
+                filtered = [e for e in filtered if e.get('type') == entry_type]
             
             return sorted(filtered, key=lambda x: x['date'], reverse=True)[:limit]
+
+    def update_journal_entry_status(
+        self,
+        entry_id: str,
+        status: str,
+        error: Optional[str] = None,
+    ) -> bool:
+        """Update analysis status/error for a journal entry."""
+        if not self.use_supabase:
+            return False
+        try:
+            payload = {'analysis_status': status}
+            if error is not None:
+                payload['analysis_error'] = error
+            self.supabase.table('journal_entries').update(payload).eq('id', entry_id).execute()
+            return True
+        except Exception as e:
+            print(f"Error updating entry status: {e}")
+            return False
+
+    def save_sentiment_analysis(
+        self,
+        entry_id: str,
+        top_label: str,
+        positive_score: float,
+        neutral_score: float,
+        negative_score: float,
+    ) -> Optional[str]:
+        """Save sentiment analysis for an entry."""
+        if not self.use_supabase:
+            return None
+        try:
+            res = self.supabase.table('sentiment_analysis').insert({
+                'entry_id': entry_id,
+                'user_id': self.user_id,
+                'top_label': top_label,
+                'positive_score': float(positive_score),
+                'neutral_score': float(neutral_score),
+                'negative_score': float(negative_score),
+            }).execute()
+            if res.data and len(res.data) > 0:
+                return res.data[0].get('id')
+            return None
+        except Exception as e:
+            print(f"Error saving sentiment to Supabase: {e}")
+            return None
     
     def save_assessment(
         self,
@@ -359,3 +427,4 @@ class DBClient:
                 return None
         else:
             return None
+

@@ -244,3 +244,4 @@ def render_forgot_password_form(auth_service: AuthService):
                     else:
                         st.error(f"Error: {error}")
 
+

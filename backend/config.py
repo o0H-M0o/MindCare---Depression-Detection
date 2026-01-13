@@ -46,3 +46,4 @@ class Config:
         'Moderate': (19, 29),
         'Severe': (30, 63)
     }
+

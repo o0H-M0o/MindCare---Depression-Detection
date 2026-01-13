@@ -161,3 +161,4 @@ def calculate_trend(scores: List[Dict]) -> Dict:
         'change': change,
         'percentage_change': round(percentage_change, 1)
     }
+

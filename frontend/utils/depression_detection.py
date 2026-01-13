@@ -21,9 +21,30 @@ import numpy as np
 import pandas as pd
 
 
-# ----------------------------
-# Thresholds and simple rules
-# ----------------------------
+# Symptom code to name mapping for AI recommendations
+BDI_SYMPTOM_NAMES = {
+    "Q1": "sadness",
+    "Q2": "discouragement about the future",
+    "Q3": "feeling like a failure",
+    "Q4": "loss of pleasure",
+    "Q5": "feelings of guilt",
+    "Q6": "feelings of being punished",
+    "Q7": "disappointment in oneself",
+    "Q8": "self-criticism or self-blame",
+    "Q9": "thoughts of killing oneself",
+    "Q10": "crying",
+    "Q11": "restlessness or agitation",
+    "Q12": "loss of interest in things",
+    "Q13": "difficulty making decisions",
+    "Q14": "feelings of worthlessness",
+    "Q15": "loss of energy",
+    "Q16": "changes in sleeping",
+    "Q17": "irritability",
+    "Q18": "changes in appetite",
+    "Q19": "difficulty concentrating",
+    "Q20": "tiredness or fatigue",
+    "Q21": "loss of interest in sex"
+}
 BDI_MILD_THRESHOLD = 10  # Single entry is considered low mood if >= 10
 STREAK_MIN = 5           # Number of consecutive entries >= 10 to signal concern
 WINDOW_DAYS = 30         # Recent window for pattern detection
@@ -149,20 +170,20 @@ def _ensure_datetime(series: pd.Series) -> pd.Series:
 def _label_severity(score: float) -> str:
 	"""Map average BDI score to user-facing severity labels.
 
-	- < 10 → Minimal
-	- 10–18 → Mild
-	- 19–29 → Moderate
-	- ≥ 30 → Severe
+	- < 10 → Steady
+	- 10–18 → Needs a little care
+	- 19–29 → Extra care may help
+	- ≥ 30 → Strong support recommended
 	"""
 	if pd.isna(score):
-		return "Minimal"
+		return "Steady"
 	if score < 10:
-		return "Minimal"
+		return "Steady"
 	if score < 19:
-		return "Mild"
+		return "Needs a little care"
 	if score < 30:
-		return "Moderate"
-	return "Severe"
+		return "Extra care may help"
+	return "Strong support recommended"
 
 
 def _has_streak(values: List[bool], min_len: int) -> bool:
@@ -461,6 +482,8 @@ def prepare_dashboard_data(db_client, window_days: int = 90) -> Optional[pd.Data
 
 			rows.append(
 				{
+					"entry_id": entry_id,
+					"entry_type": entry.get("type", "by_typing"),
 					"datetime": dt,
 					"bdi_total_score": total,
 					"bdi_severity": sev,
@@ -468,6 +491,7 @@ def prepare_dashboard_data(db_client, window_days: int = 90) -> Optional[pd.Data
 					"sentiment_label": sentiment_label,
 					# keep a bit of text context if available
 					"text": entry.get("text", ""),
+					"uploaded_file": entry.get("uploaded_file", ""),
 				}
 			)
 
@@ -482,4 +506,5 @@ def prepare_dashboard_data(db_client, window_days: int = 90) -> Optional[pd.Data
 		# In production, consider logging this with more context
 		print(f"Error preparing dashboard data: {exc}")
 		return None
+
 

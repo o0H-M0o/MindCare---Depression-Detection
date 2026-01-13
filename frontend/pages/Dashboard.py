@@ -225,7 +225,7 @@ st.divider()
 # -----------------------------
 # TIMEFRAME SELECTION
 # -----------------------------
-timeframe_options = {"Last 7 days":7,"Last 30 days":30,"Last 90 days":90,"All time":None}
+timeframe_options = {"Last 30 days":30,"Last 60 days":60,"Last 90 days":90,"All time":None}
 selected_timeframe = st.selectbox("📅 Choose your view:", list(timeframe_options.keys()), index=1, help="Filters all charts by time range.")
 cutoff = datetime.now()-timedelta(days=timeframe_options[selected_timeframe]) if timeframe_options[selected_timeframe] else None
 display_df = df[df['datetime']>=cutoff].copy() if cutoff else df.copy()
@@ -368,7 +368,7 @@ with export_col1:
                 data=csv_bytes,
                 file_name=f"wellbeing_data_{user_name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
-                use_container_width=True
+                width='stretch'
             )
     except Exception as e:
         st.error(f"CSV export error: {e}")
@@ -408,7 +408,7 @@ with export_col2:
                     data=pdf_bytes,
                     file_name=f"wellbeing_report_{user_name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
                     mime="application/pdf",
-                    use_container_width=True
+                    width='stretch'
                 )
         else:
             st.info("No data available for PDF report")
@@ -416,4 +416,5 @@ with export_col2:
         st.error(str(ie))
     except Exception as e:
         st.error(f"PDF export error: {e}")
+
 

@@ -184,3 +184,4 @@ def generate_self_support_recommendation(
     )
 
     return (getattr(resp, "text", None) or "").strip()
+

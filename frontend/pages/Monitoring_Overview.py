@@ -1,5 +1,5 @@
 """
-Monitoring Overview - Quick summary of all linked users' mental health status
+Overview Dashboard - Quick summary of all linked users' mental health status
 Shows which users need attention vs. those doing well
 """
 
@@ -24,7 +24,7 @@ from utils.export_utils import df_to_csv_bytes, figs_to_pdf_bytes, dashboard_to_
 
 # Page config
 st.set_page_config(
-    page_title="Monitoring Overview",
+    page_title="Overview Dashboard",
     page_icon="📊",
     layout="wide"
 )
@@ -49,13 +49,18 @@ render_auth_sidebar(auth_service)
 auth_service.require_auth()
 auth_service.require_role(['viewer', 'institution'])
 
+# Helper function for segment extraction in PDF export
+def _seg_for_row(row):
+    """Extract segment name from a user data row for PDF export."""
+    return (row.get('segment_name') or row.get('segment') or row.get('institution_segment') or '').strip() or 'N/A'
+
 # Get user profile and role
 user_profile = auth_service.get_user_profile()
 user_role = auth_service.get_user_role()
 
 col_title, col_btn = st.columns([4, 1])
 with col_title:
-    st.title("📊 Monitoring Overview")
+    st.title("📊 Overview Dashboard")
 with col_btn:
     st.write("")
     st.write("")
@@ -73,8 +78,6 @@ if not linked_users:
         **How to get access:**
     - Individual users can opt-in to share their data through their Settings page""")
     st.stop()
-
-st.write(f"Monitoring **{len(linked_users)} user(s)**")
 
 # --- Controls: Search and Segment filter (match Institution Dashboard) ---
 inst_id = None
@@ -132,6 +135,7 @@ with st.spinner("Analyzing all users...It might take some time to load."):
             if user_df is None or user_df.empty:
                 users_no_data.append({
                     'name': user['name'],
+                    'email': user.get('email') or 'N/A',
                     'student_id': user.get('student_id', 'N/A'),
                     'segment_name': user_segment,
                     'access_type': user.get('access_type', 'unknown').replace('_', ' ').title(),
@@ -144,11 +148,14 @@ with st.spinner("Analyzing all users...It might take some time to load."):
             if not req.get('meets', False):
                 users_no_data.append({
                     'name': user['name'],
+                    'email': user.get('email') or 'N/A',
                     'student_id': user.get('student_id', 'N/A'),
                     'segment_name': user_segment,
                     'access_type': user.get('access_type', 'unknown').replace('_', ' ').title(),
                     'institution_name': user.get('institution_name', 'N/A'),
-                    'reason': f"{req.get('recent_entries', 0)} entries / {req.get('distinct_days', 0)} days (last 30d)"
+                    'reason': f"{req.get('recent_entries', 0)} entries / {req.get('distinct_days', 0)} days (last 30d)",
+                    'recent_entries_30d': int(req.get('recent_entries', 0) or 0),
+                    'distinct_days_30d': int(req.get('distinct_days', 0) or 0),
                 })
                 continue
             
@@ -156,6 +163,7 @@ with st.spinner("Analyzing all users...It might take some time to load."):
             
             user_info = {
                 'name': user['name'],
+                'email': user.get('email') or 'N/A',
                 'student_id': user.get('student_id', 'N/A'),
                 'segment_name': user_segment,
                 'access_type': user.get('access_type', 'unknown').replace('_', ' ').title(),
@@ -163,6 +171,8 @@ with st.spinner("Analyzing all users...It might take some time to load."):
                 'severity': analysis.get('overall_severity', 'Unknown'),
                 'trend': analysis.get('trend_direction', 'Unknown'),
                 'confidence': analysis.get('confidence_level', 'N/A'),
+                'top_symptoms': analysis.get('top_symptoms', []) or [],
+                'last_entry_dt': user_df['datetime'].max() if not user_df.empty else None,
                 'last_entry_date': user_df['datetime'].max().strftime('%b %d, %Y') if not user_df.empty else 'N/A'
             }
             
@@ -175,6 +185,7 @@ with st.spinner("Analyzing all users...It might take some time to load."):
             st.error(f"Error analyzing {user['name']}: {str(e)}")
             users_no_data.append({
                 'name': user['name'],
+                'email': user.get('email') or 'N/A',
                 'student_id': user.get('student_id', 'N/A'),
                 'segment_name': (user.get('segment_name') or user.get('segment') or user.get('institution_segment') or '').strip(),
                 'access_type': user.get('access_type', 'unknown').replace('_', ' ').title(),
@@ -207,11 +218,6 @@ def apply_filters(user_list):
 users_need_attention_filtered = apply_filters(users_need_attention)
 users_doing_well_filtered = apply_filters(users_doing_well)
 users_no_data_filtered = apply_filters(users_no_data)
-
-# Summary statistics (moved to top after analysis)
-st.markdown("### 📈 Summary Statistics")
-col1, col2, col3 = st.columns(3)
-
 use_filtered_data = bool(search_query) or (
     user_role == 'institution' and selected_segment and selected_segment != "All segments"
 )
@@ -226,32 +232,15 @@ shown_no_data = len(users_no_data_filtered)
 
 total_all = total_attention + total_well + total_no_data
 shown_all = shown_attention + shown_well + shown_no_data
+all_users_with_data = (users_need_attention_filtered + users_doing_well_filtered) if use_filtered_data else (users_need_attention + users_doing_well)
 
-with col1:
-    st.metric(
-        "⚠️ Showing Sign of Depression",
-        shown_attention if use_filtered_data else total_attention,
-        delta=f"{shown_attention}/{total_attention} shown" if use_filtered_data else None,
-        help="Users showing signs of persistent emotional distress"
-    )
+# Build compact aggregate figures (rendered in tabs below)
+fig_summary = None
+fig_segment = None
+fig_top_symptoms = None
+fig_data_quality = None
 
-with col2:
-    st.metric(
-        "✅ No Sign of Depression",
-        shown_well if use_filtered_data else total_well,
-        delta=f"{shown_well}/{total_well} shown" if use_filtered_data else None,
-        help="Users with no signs of depression"
-    )
-
-with col3:
-    st.metric(
-        "ℹ️ Insufficient Data",
-        shown_no_data if use_filtered_data else total_no_data,
-        delta=f"{shown_no_data}/{total_no_data} shown" if use_filtered_data else None,
-        help="Users who need more journal entries"
-    )
-
-# Summary counts chart (calm horizontal bar)
+# Support priority snapshot (pie)
 try:
     summary_counts = {
         'Depressed': shown_attention if use_filtered_data else total_attention,
@@ -264,93 +253,198 @@ try:
         'Not Depressed': '#A8D5A2',
         'Insufficient Data': '#CFCFCF'
     }
-    fig_summary = px.bar(
+    fig_summary = px.pie(
         df_summary,
-        x='Number of Users',
-        y='Category',
-        orientation='h',
+        names='Category',
+        values='Number of Users',
         color='Category',
         color_discrete_map=color_map_summary,
-        text='Number of Users'
+        hole=0.45,
     )
-    fig_summary.update_traces(textposition='outside')
-    fig_summary.update_layout(height=240, margin=dict(l=40, r=40, t=40, b=40), showlegend=False)
-    st.plotly_chart(fig_summary, width='stretch')
+    fig_summary.update_traces(textposition='inside', textinfo='percent+label')
+    fig_summary.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10), showlegend=True)
 except Exception:
-    pass
+    fig_summary = None
 
-st.divider()
+# Segment overview (institution only)
+try:
+    if user_role == 'institution':
+        rows = []
+        def _seg(u: dict) -> str:
+            return (u.get('segment_name') or u.get('segment') or u.get('institution_segment') or '').strip() or 'Unassigned'
 
-# === AGGREGATE VISUALIZATIONS ===
-if (users_need_attention_filtered if use_filtered_data else users_need_attention) or (users_doing_well_filtered if use_filtered_data else users_doing_well):
-    # Combine all users with data for aggregate analysis (respect filters)
-    all_users_with_data = (users_need_attention_filtered + users_doing_well_filtered) if use_filtered_data else (users_need_attention + users_doing_well)
-    
-    viz_col1, viz_col2 = st.columns(2)
-    
-    with viz_col1:
-        # Severity Distribution
-        st.markdown("#### 🎯 Recent Emotional Distress Level")
-        severity_counts = {}
-        for user in all_users_with_data:
-            sev = user.get('severity', 'Unknown')
-            severity_counts[sev] = severity_counts.get(sev, 0) + 1
-        
-        if severity_counts:
-            severity_df = pd.DataFrame(list(severity_counts.items()), columns=['Severity', 'Count'])
-            # Define color map for severity
-            # Calmer palette: soft greens/blues/peach for a gentler look
-            color_map = {
-                'Minimal': '#A8D5A2',  # soft green
-                'Mild': '#C6DEC9',     # muted mint
-                'Moderate': '#F6D7B0', # soft peach
-                'Severe': '#F4A59A',   # muted coral
-                'Unknown': '#CFCFCF'   # soft grey
-            }
-            fig_severity = px.pie(
-                severity_df,
-                names='Severity',
-                values='Count',
-                color='Severity',
-                color_discrete_map=color_map,
-                hole=0.4
+        src_attention = users_need_attention_filtered if use_filtered_data else users_need_attention
+        src_well = users_doing_well_filtered if use_filtered_data else users_doing_well
+        src_no = users_no_data_filtered if use_filtered_data else users_no_data
+
+        for u in src_attention:
+            rows.append({'segment': _seg(u), 'status': 'Depressed'})
+        for u in src_well:
+            rows.append({'segment': _seg(u), 'status': 'Not Depressed'})
+        for u in src_no:
+            rows.append({'segment': _seg(u), 'status': 'Insufficient Data'})
+
+        if rows:
+            seg_df = pd.DataFrame(rows)
+            seg_counts = seg_df.groupby(['segment', 'status']).size().reset_index(name='count')
+            fig_segment = px.bar(
+                seg_counts,
+                x='segment',
+                y='count',
+                color='status',
+                barmode='stack',
+                color_discrete_map={
+                    'Depressed': '#F4A59A',
+                    'Not Depressed': '#A8D5A2',
+                    'Insufficient Data': '#CFCFCF',
+                },
+                labels={'segment': 'Segment', 'count': 'Users', 'status': ''}
             )
-            fig_severity.update_traces(textposition='inside', textinfo='percent+label')
-            fig_severity.update_layout(height=300, margin=dict(l=40, r=40, t=40, b=40), showlegend=True)
-            st.plotly_chart(fig_severity, width='stretch')
+            fig_segment.update_layout(height=260, margin=dict(l=30, r=30, t=30, b=30), legend_title_text='')
+except Exception:
+    fig_segment = None
+
+# Top symptoms (aggregate among depressed users)
+try:
+    src_for_symptoms = users_need_attention_filtered if use_filtered_data else users_need_attention
+    symptom_counts = {}
+    for u in src_for_symptoms:
+        symptoms = u.get('top_symptoms', []) or []
+        if isinstance(symptoms, str):
+            try:
+                symptoms = json.loads(symptoms)
+            except Exception:
+                symptoms = []
+        if not isinstance(symptoms, list):
+            symptoms = []
+        for s in symptoms:
+            s = str(s or '').strip()
+            if not s:
+                continue
+            symptom_counts[s] = symptom_counts.get(s, 0) + 1
+
+    if symptom_counts:
+        df_sym = pd.DataFrame(
+            sorted(symptom_counts.items(), key=lambda kv: kv[1], reverse=True)[:10],
+            columns=['Symptom', 'Users']
+        )
+        fig_top_symptoms = px.bar(
+            df_sym,
+            x='Users',
+            y='Symptom',
+            orientation='h',
+            color_discrete_sequence=['#1f77b4'],
+        )
+        fig_top_symptoms.update_layout(height=320, margin=dict(l=30, r=30, t=30, b=30), showlegend=False)
+except Exception:
+    fig_top_symptoms = None
+
+# Data quality (insufficient data reasons)
+try:
+    src_no_data = users_no_data_filtered if use_filtered_data else users_no_data
+    reason_counts = {
+        'Too few entries': 0,
+        'Too few days': 0,
+        'Too few entries and days': 0,
+        'Unknown': 0,
+    }
+
+    for u in src_no_data:
+        re = u.get('recent_entries_30d')
+        dd = u.get('distinct_days_30d')
+        if re is None or dd is None:
+            reason_counts['Unknown'] += 1
+            continue
+        try:
+            re = int(re)
+            dd = int(dd)
+        except Exception:
+            reason_counts['Unknown'] += 1
+            continue
+
+        low_entries = re < 10
+        low_days = dd < 5
+        if low_entries and low_days:
+            reason_counts['Too few entries and days'] += 1
+        elif low_entries:
+            reason_counts['Too few entries'] += 1
+        elif low_days:
+            reason_counts['Too few days'] += 1
         else:
-            st.info("No severity data available")
-    
-    with viz_col2:
-        # Trend Direction
-        st.markdown("#### 📈 Trend Direction")
-        trend_counts = {}
-        for user in all_users_with_data:
-            trend = user.get('trend', 'Unknown')
-            trend_counts[trend] = trend_counts.get(trend, 0) + 1
-        
-        if trend_counts:
-            trend_df = pd.DataFrame(list(trend_counts.items()), columns=['Trend', 'Count'])
-            # Map trends to friendly labels with emojis
-            trend_df['Display'] = trend_df['Trend'].apply(lambda x: 
-                f"{x}" if x == "Improving" else f"{x}" if x == "Stable" else f"{x}" if x == "Worsening" else x
-            )
-            
-            # Single-color bar chart - default blue
-            single_color = '#1f77b4'
-            fig_trend = px.bar(
-                trend_df,
-                x='Display',
-                y='Count',
-                color_discrete_sequence=[single_color],
-                labels={'Display': 'Trend Direction', 'Count': 'Number of Users'}
-            )
-            fig_trend.update_layout(height=300, margin=dict(l=40, r=40, t=40, b=40), showlegend=False)
-            st.plotly_chart(fig_trend, width='stretch')
+            reason_counts['Unknown'] += 1
+
+    df_q = pd.DataFrame(
+        [(k, v) for k, v in reason_counts.items() if v > 0],
+        columns=['Reason', 'Users']
+    )
+    if not df_q.empty:
+        fig_data_quality = px.bar(
+            df_q,
+            x='Reason',
+            y='Users',
+            color_discrete_sequence=['#1f77b4'],
+        )
+        fig_data_quality.update_layout(height=280, margin=dict(l=30, r=30, t=30, b=30), showlegend=False)
+except Exception:
+    fig_data_quality = None
+
+
+# === MAIN TABS ===
+tab_charts, tab_dep, tab_well, tab_no = st.tabs([
+    "📊 Charts",
+    f"⚠️ Depressed ({len(users_need_attention_filtered)})",
+    f"✅ Not Depressed ({len(users_doing_well_filtered)})",
+    f"ℹ️ Insufficient Data ({len(users_no_data_filtered)})",
+])
+
+with tab_charts:
+    # Institution: 2x2 grid. Viewer: 2 charts first row + 1 full-width chart second row.
+
+    row1_col1, row1_col2 = st.columns(2)
+    with row1_col1:
+        st.markdown("#### Support Priority Snapshot")
+        if fig_summary is not None:
+            st.plotly_chart(fig_summary, width='stretch')
         else:
-            st.info("No trend data available")
-    
-    st.divider()
+            st.info("No snapshot chart available.")
+
+    with row1_col2:
+        if user_role == 'institution':
+            st.markdown("#### Status by segment")
+            if fig_segment is not None:
+                st.plotly_chart(fig_segment, width='stretch')
+            else:
+                st.info("No segment chart available.")
+        else:
+            # Viewer: put Data Quality here instead of Segment
+            st.markdown("#### Why some users have insufficient data")
+            if fig_data_quality is not None:
+                st.plotly_chart(fig_data_quality, width='stretch')
+            else:
+                st.info("No data quality chart available.")
+
+    if user_role == 'institution':
+        row2_col1, row2_col2 = st.columns(2)
+        with row2_col1:
+            st.markdown("#### Most common signals among users showing signs of depression")
+            if fig_top_symptoms is not None:
+                st.plotly_chart(fig_top_symptoms, width='stretch')
+            else:
+                st.info("No symptom signals available.")
+        with row2_col2:
+            st.markdown("#### Why some users have insufficient data")
+            if fig_data_quality is not None:
+                st.plotly_chart(fig_data_quality, width='stretch')
+            else:
+                st.info("No data quality chart available.")
+    else:
+        # Viewer: Signals in second row, full width (one column)
+        st.markdown("#### Most common signals among users showing signs of depression")
+        if fig_top_symptoms is not None:
+            st.plotly_chart(fig_top_symptoms, width='stretch')
+        else:
+            st.info("No symptom signals available.")
+
 
 # SECTION 1: Users who need attention (Priority - Shown in expander)
 segment_by_student_id = {}
@@ -378,108 +472,67 @@ def _lookup_segment(name_val, student_id_val) -> str:
     nm = str(name_val or '').strip()
     return segment_by_name.get(nm, '')
 
-if users_need_attention_filtered:
-    with st.expander(f"⚠️ Users Showing Sign of Depression ({len(users_need_attention_filtered)} user(s))", expanded=True):
-        st.caption("Users showing signs of persistent emotional distress")
-        
-        # Convert to DataFrame for table display
+def _base_table_cols(df: pd.DataFrame) -> dict:
+    cols = {
+        '👤 Name': df.get('name', ''),
+        '📧 Email': df.get('email', 'N/A'),
+    }
+    if user_role == 'institution':
+        cols['🎓 Student ID'] = df.get('student_id', 'N/A')
+        cols['🧩 Segment'] = df.apply(
+            lambda r: (r.get('segment_name') or r.get('segment') or r.get('institution_segment') or '').strip()
+            or _lookup_segment(r.get('name'), r.get('student_id')),
+            axis=1
+        )
+    return cols
+
+with tab_dep:
+    if users_need_attention_filtered:
         df_need_attention = pd.DataFrame(users_need_attention_filtered)
-        
-        # Create a cleaner display dataframe
-        display_cols_attention = {
-            '👤 Name': df_need_attention['name'],
-        }
-        if user_role == 'institution':
-            display_cols_attention['🎓 Student ID'] = df_need_attention.get('student_id', 'N/A')
-            display_cols_attention['🧩 Segment'] = df_need_attention.apply(
-                lambda r: (r.get('segment_name') or r.get('segment') or r.get('institution_segment') or '').strip()
-                or _lookup_segment(r.get('name'), r.get('student_id')),
-                axis=1
-            )
-        display_cols_attention.update({
-            '📊 Recent Emotional Distress Level': df_need_attention['severity'],
-            '📈 Trend': df_need_attention['trend'].apply(lambda x:
-                f"↗️ {x}" if x == "Improving" else f"→ {x}" if x == "Stable" else f"↘️ {x}"),
-            '📅 Last Entry': df_need_attention['last_entry_date']
-        })
-        display_df_attention = pd.DataFrame(display_cols_attention)
-        
-        # Display as interactive table
+        display_cols = _base_table_cols(df_need_attention)
+        display_cols['📅 Last Entry'] = df_need_attention.get('last_entry_date', 'N/A')
         st.dataframe(
-            display_df_attention,
+            pd.DataFrame(display_cols),
             width='stretch',
             hide_index=True,
-            height=min(400, len(display_df_attention) * 35 + 38)  # Dynamic height based on rows
+            height=360,
         )
-elif users_need_attention:
-    st.info(f"⚠️ {len(users_need_attention)} user(s) are showing signs of depression, but none match your search.")
+    elif users_need_attention:
+        st.info(f"⚠️ {len(users_need_attention)} user(s) are showing signs of depression, but none match your filters.")
+    else:
+        st.info("No users in this category.")
 
-# SECTION 2: Users who are doing well (Compact table view in expander)
-if users_doing_well_filtered:
-    with st.expander(f"✅ Users With No Sign of Depression ({len(users_doing_well_filtered)} user(s))", expanded=False):
-        st.caption("Users showing no signs of depression")
-        
-        # Convert to DataFrame for table display
+with tab_well:
+    if users_doing_well_filtered:
         df_doing_well = pd.DataFrame(users_doing_well_filtered)
-        
-        # Create a cleaner display dataframe
-        display_cols_well = {
-            '👤 Name': df_doing_well['name'],
-        }
-        if user_role == 'institution':
-            display_cols_well['🎓 Student ID'] = df_doing_well.get('student_id', 'N/A')
-            display_cols_well['🧩 Segment'] = df_doing_well.apply(
-                lambda r: (r.get('segment_name') or r.get('segment') or r.get('institution_segment') or '').strip()
-                or _lookup_segment(r.get('name'), r.get('student_id')),
-                axis=1
-            )
-        display_cols_well.update({
-            '📊 Recent Emotional Distress Level': df_doing_well['severity'],
-            '📈 Trend': df_doing_well['trend'].apply(lambda x:
-                f"↗️ {x}" if x == "Improving" else f"→ {x}" if x == "Stable" else f"↘️ {x}"),
-            '📅 Last Entry': df_doing_well['last_entry_date']
-        })
-        display_df = pd.DataFrame(display_cols_well)
-        
-        # Display as interactive table
+        display_cols = _base_table_cols(df_doing_well)
+        display_cols['📅 Last Entry'] = df_doing_well.get('last_entry_date', 'N/A')
         st.dataframe(
-            display_df,
+            pd.DataFrame(display_cols),
             width='stretch',
             hide_index=True,
-            height=min(400, len(display_df) * 35 + 38)  # Dynamic height based on rows
+            height=360,
         )
-elif users_doing_well:
-    st.info(f"✅ {len(users_doing_well)} user(s) have no sign of depression, but none match your search.")
+    elif users_doing_well:
+        st.info(f"✅ {len(users_doing_well)} user(s) have no sign of depression, but none match your filters.")
+    else:
+        st.info("No users in this category.")
 
-# SECTION 3: Users with no data (Collapsible)
-if users_no_data_filtered:
-    with st.expander(f"ℹ️ Users With Insufficient Data ({len(users_no_data_filtered)} user(s))", expanded=False):
-        st.caption("These users need more journal entries before analysis can be performed")
-
+with tab_no:
+    if users_no_data_filtered:
         df_no_data = pd.DataFrame(users_no_data_filtered)
-        display_cols_no = {
-            '👤 Name': df_no_data.get('name', ''),
-        }
-        if user_role == 'institution':
-            display_cols_no['🎓 Student ID'] = df_no_data.get('student_id', 'N/A')
-            display_cols_no['🧩 Segment'] = df_no_data.apply(
-                lambda r: (r.get('segment_name') or r.get('segment') or r.get('institution_segment') or '').strip()
-                or _lookup_segment(r.get('name'), r.get('student_id')),
-                axis=1
-            )
-        else:
-            display_cols_no['🎓 Student ID'] = df_no_data.get('student_id', 'N/A')
-        display_cols_no['ℹ️ Status'] = df_no_data.get('reason', 'Insufficient data')
-        display_no_data = pd.DataFrame(display_cols_no)
-
+        display_cols = _base_table_cols(df_no_data)
+        display_cols['ℹ️ Status'] = df_no_data.get('reason', 'Insufficient data')
         st.dataframe(
-            display_no_data,
+            pd.DataFrame(display_cols),
             width='stretch',
             hide_index=True,
-            height=min(400, len(display_no_data) * 35 + 38)
+            height=360,
         )
-elif users_no_data:
-    st.info(f"ℹ️ {len(users_no_data)} user(s) have insufficient data, but none match your current search.")
+    elif users_no_data:
+        st.info(f"ℹ️ {len(users_no_data)} user(s) have insufficient data, but none match your filters.")
+    else:
+        st.info("No users in this category.")
 
 # Action guidance
 st.divider()
@@ -554,6 +607,12 @@ with export_col1:
                     # internal/raw segment fields; keep normalized 'segment'
                     'segment_name',
                     'institution_segment',
+                    'severity',
+                    'trend',
+                    'top_symptoms',
+                    'last_entry_date',
+                    'recent_entries_30d',
+                    'distinct_days_30d',
                 ],
                 errors='ignore'
             )
@@ -561,7 +620,6 @@ with export_col1:
             # Rename columns per monitoring export spec
             df_export = df_export.rename(
                 columns={
-                    'severity': 'recent_emotional_distress_level',
                     'reason': 'insufficient_data',
                 }
             )
@@ -589,7 +647,7 @@ with export_col1:
                 file_name=f"monitoring_overview_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
                 help="Download aggregate monitoring data",
-                use_container_width=True
+                width='stretch'
             )
         else:
             st.info("No data available for export")
@@ -600,12 +658,14 @@ with export_col2:
     # PDF export
     try:
         viz_figs = []
-        # if 'fig_summary' in locals():
-        #     viz_figs.append({'fig': locals()['fig_summary'], 'title': 'Summary Statistics'})
-        if 'fig_severity' in locals():
-            viz_figs.append({'fig': locals()['fig_severity'], 'title': 'Recent Emotional Distress Level'})
-        if 'fig_trend' in locals():
-            viz_figs.append({'fig': locals()['fig_trend'], 'title': 'Trend Direction'})
+        if fig_summary is not None:
+            viz_figs.append({'fig': fig_summary, 'title': 'Support Priority Snapshot'})
+        if user_role == 'institution' and fig_segment is not None:
+            viz_figs.append({'fig': fig_segment, 'title': 'Status by Segment'})
+        if fig_top_symptoms is not None:
+            viz_figs.append({'fig': fig_top_symptoms, 'title': 'Most Common Signals (Top Symptoms)'})
+        if fig_data_quality is not None:
+            viz_figs.append({'fig': fig_data_quality, 'title': 'Data Quality: Insufficient Data Reasons'})
 
         if viz_figs:
             with st.spinner("Preparing PDF..."):
@@ -619,13 +679,6 @@ with export_col2:
                 else:
                     filters['Segment'] = 'All segments'
 
-                summary_stats = {
-                    'Users showing sign of depression': len(users_need_attention_filtered),
-                    'Users with no sign of depression': len(users_doing_well_filtered),
-                    'Users with insufficient data': len(users_no_data_filtered),
-                    'Total users (after filters)': len(users_need_attention_filtered) + len(users_doing_well_filtered) + len(users_no_data_filtered),
-                }
-
                 tables = []
 
                 df_att = pd.DataFrame(users_need_attention_filtered)
@@ -635,10 +688,9 @@ with export_col2:
                             'title': 'Users Showing Sign of Depression',
                             'df': pd.DataFrame({
                                 'Name': df_att.get('name', ''),
+                                'Email': df_att.get('email', 'N/A'),
                                 'Student ID': df_att.get('student_id', 'N/A'),
                                 'Segment': df_att.apply(lambda rr: _seg_for_row(rr), axis=1),
-                                'Recent Emotional Distress Level': df_att.get('severity', ''),
-                                'Trend': df_att.get('trend', ''),
                                 'Last Entry': df_att.get('last_entry_date', ''),
                             })
                         })
@@ -648,8 +700,7 @@ with export_col2:
                             'title': 'Users Showing Sign of Depression',
                             'df': pd.DataFrame({
                                 'Name': df_att.get('name', ''),
-                                'Recent Emotional Distress Level': df_att.get('severity', ''),
-                                'Trend': df_att.get('trend', ''),
+                                'Email': df_att.get('email', 'N/A'),
                                 'Last Entry': df_att.get('last_entry_date', ''),
                             })
                         })
@@ -661,10 +712,9 @@ with export_col2:
                             'title': 'Users With No Sign of Depression',
                             'df': pd.DataFrame({
                                 'Name': df_well.get('name', ''),
+                                'Email': df_well.get('email', 'N/A'),
                                 'Student ID': df_well.get('student_id', 'N/A'),
                                 'Segment': df_well.apply(lambda rr: _seg_for_row(rr), axis=1),
-                                'Recent Emotional Distress Level': df_well.get('severity', ''),
-                                'Trend': df_well.get('trend', ''),
                                 'Last Entry': df_well.get('last_entry_date', ''),
                             })
                         })
@@ -674,8 +724,7 @@ with export_col2:
                             'title': 'Users With No Sign of Depression',
                             'df': pd.DataFrame({
                                 'Name': df_well.get('name', ''),
-                                'Recent Emotional Distress Level': df_well.get('severity', ''),
-                                'Trend': df_well.get('trend', ''),
+                                'Email': df_well.get('email', 'N/A'),
                                 'Last Entry': df_well.get('last_entry_date', ''),
                             })
                         })
@@ -687,6 +736,7 @@ with export_col2:
                             'title': 'Users With Insufficient Data',
                             'df': pd.DataFrame({
                                 'Name': df_no.get('name', ''),
+                                'Email': df_no.get('email', 'N/A'),
                                 'Student ID': df_no.get('student_id', 'N/A'),
                                 'Segment': df_no.apply(lambda rr: _seg_for_row(rr), axis=1),
                                 'Insufficient Data': df_no.get('reason', 'Insufficient data'),
@@ -698,13 +748,13 @@ with export_col2:
                             'title': 'Users With Insufficient Data',
                             'df': pd.DataFrame({
                                 'Name': df_no.get('name', ''),
+                                'Email': df_no.get('email', 'N/A'),
                                 'Insufficient Data': df_no.get('reason', 'Insufficient data'),
                             })
                         })
 
-                pdf_title = f"Monitoring Overview Report (Generated on {generated_on})"
+                pdf_title = f"Overview Dashboard Report (Generated on {generated_on})"
                 pdf_bytes = dashboard_to_pdf_bytes({
-                    'summary_stats': summary_stats,
                     'filters': filters,
                     'tables': tables,
                     'figs': viz_figs,
@@ -715,7 +765,7 @@ with export_col2:
                     data=pdf_bytes,
                     file_name=f"monitoring_overview_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
                     mime="application/pdf",
-                    use_container_width=True
+                    width='stretch'
                 )
         else:
             st.info("No charts available for PDF export")
@@ -723,3 +773,4 @@ with export_col2:
         st.error(str(ie))
     except Exception as e:
         st.error(f"PDF export error: {e}")
+

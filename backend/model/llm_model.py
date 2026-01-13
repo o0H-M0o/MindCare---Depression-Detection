@@ -277,3 +277,4 @@ class BDIAssessmentModel:
                     time.sleep(2.5)
                 
         return results
+

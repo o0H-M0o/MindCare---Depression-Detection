@@ -205,7 +205,7 @@ render_auth_sidebar(auth_service)
 # Define landing page function for unauthenticated users
 def landing_page():
     st.title("🧠 Welcome to MindCare")
-    st.write("### Journaling + AI insights for self-monitoring")
+    st.write("### Text analysis + AI insights for self-monitoring")
     st.caption("MindCare is not a medical diagnosis.")
     
     st.divider()
@@ -222,15 +222,9 @@ def landing_page():
 
     st.write("**Write privately. Share insights when you choose.**")
     st.write("**Support persons and institutions view only what is shared with them.**")
-    col1, col2 = st.columns(2)
     
-    with col1:
-        st.subheader("📝 Private Journaling")
-        st.write("Write daily reflections in a private space")
-
-    with col2:
-        st.subheader("✨ AI-Powered Analysis")
-        st.write("Get BDI-based (Beck Depression Inventory) depression analysis and sentiment insights from your entries")
+    st.subheader("✨ AI-Powered Text Analysis")
+    st.write("Get BDI-based (Beck Depression Inventory) depression analysis and sentiment insights from your text entries")
 
     col1, col2 = st.columns(2)   
     with col1:
@@ -249,16 +243,16 @@ def home_page():
     
     if role == "individual":
         st.write("**Your Mental Health Companion**")
-        st.write("Track your well-being through journaling, BDI-based depression analysis (Beck Depression Inventory), sentiment insights, and trends over time.")
+        st.write("Track your well-being through submitted text, BDI-based depression analysis (Beck Depression Inventory), sentiment insights, and trends over time.")
         
         st.divider()
         
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.info("**📝 My Journal**")
-            st.write("Write daily reflections in a private space.")
-            if st.button("Open Journal", key="home_open_journal"):
+            st.info("**📝 Text Analysis**")
+            st.write("Submit your text for AI-powered analysis.")
+            if st.button("Open Text Analysis", key="home_open_journal"):
                 st.switch_page("pages/Journal.py")
 
         with col2:
@@ -278,7 +272,7 @@ def home_page():
         st.subheader("🧠 About BDI-based Analysis")
         st.write("""
         We apply the Beck Depression Inventory (BDI) approach with AI analysis
-        of your journal entries to estimate symptom severity and surface mood
+        of your text entries to estimate symptom severity and surface mood
         patterns. Results are intended for awareness and to encourage seeking
         professional help when appropriate.
         """)
@@ -293,13 +287,13 @@ def home_page():
         col1, col2 = st.columns(2)
 
         with col1:
-            st.info("**📊 Monitoring Overview**")
+            st.info("**📊 Overview Dashboard**")
             st.write("Overview of linked users' mood trends.")
-            if st.button("Open Monitoring", key="home_open_monitoring"):
+            if st.button("Open Overview Dashboard", key="home_open_monitoring"):
                 st.switch_page("pages/Monitoring_Overview.py")
 
         with col2:
-            st.info("**💖 Analysis Details**")
+            st.info("**🎯 Analysis Details**")
             st.write("Open detailed analytics for a selected user.")
             if st.button("Open Analysis", key="home_open_viewer_dashboard"):
                 st.switch_page("pages/Viewer_Dashboard.py")
@@ -310,9 +304,9 @@ def home_page():
         st.write("""
         As a viewer, you can:
         - See assessment scores and trends for users who grant you access
-        - Monitor indicators without viewing personal journal text
+        - Monitor indicators without viewing personal text entries
         - Support users while respecting privacy
-        - You cannot read journal text or modify another user's private data.
+        - You cannot read personal text entries or modify another user's private data.
         """)
     
     elif role == "institution":
@@ -324,9 +318,9 @@ def home_page():
         col1, col2 = st.columns(2)
         
         with col1:
-            st.info("**📊 Monitoring Overview**")
+            st.info("**📊 Overview Dashboard**")
             st.write("Overview of linked users' mood trends and aggregated indicators.")
-            if st.button("Open Monitoring", key="inst_open_monitoring"):
+            if st.button("Open Overview Dashboard", key="inst_open_monitoring"):
                 st.switch_page("pages/Monitoring_Overview.py")
         
         with col2:
@@ -341,9 +335,9 @@ def home_page():
         st.write("""
         As institution staff, you can:
         - View assessment scores and trends for users who opted in to share with your institution
-        - Monitor indicators without viewing personal journal content
+        - Monitor indicators without viewing personal text entries
         - Support students/clients while maintaining privacy standards
-        - You cannot read personal journal entries or modify individual user data.
+        - You cannot read personal text entries.
         """)
 
 # Configure navigation based on authentication status
@@ -364,12 +358,13 @@ else:
                 st.Page(home_page, title="About MindCare", icon="🏠", default=True),
             ],
             "Journal": [
-                st.Page("pages/Journal.py", title="My Journal", icon="📝"),
-                st.Page("pages/My History.py", title="My History", icon="📈"),
+                st.Page("pages/Journal.py", title="My Analyser", icon="📝"),
+                st.Page("pages/My History.py", title="My History", icon="📜"),
             ],
             "Analytics": [
-                st.Page("pages/Dashboard.py", title="My Well-being Overview", icon="🌿"),
-            ],
+                # st.Page("pages/Dashboard.py", title="My Well-being Overview", icon="🌿"),
+                st.Page("pages/Personal_Dashboard.py", title="My Personal Dashboard", icon="💡"),
+            ],  
             "Account": [
                 st.Page("pages/Settings.py", title="Settings", icon="⚙️"),
             ],
@@ -380,8 +375,8 @@ else:
                 st.Page(home_page, title="About MindCare", icon="🏠", default=True),
             ],
             "Monitoring": [
-                st.Page("pages/Monitoring_Overview.py", title="Monitoring Overview", icon="📊"),
-                st.Page("pages/Viewer_Dashboard.py", title="Analysis Details", icon="💖"),
+                st.Page("pages/Monitoring_Overview.py", title="Overview Dashboard", icon="📊"),
+                st.Page("pages/Viewer_Dashboard.py", title="Analysis Details", icon="🎯"),
             ],
             "Account": [
                 st.Page("pages/Settings.py", title="Settings", icon="⚙️"),
@@ -394,7 +389,7 @@ else:
                 st.Page(home_page, title="About MindCare", icon="🏠", default=True),
             ],
             "Monitoring": [
-                st.Page("pages/Monitoring_Overview.py", title="Monitoring Overview", icon="📊"),
+                st.Page("pages/Monitoring_Overview.py", title="Overview Dashboard", icon="📊"),
                 st.Page("pages/Institution_Dashboard.py", title="Analysis Details", icon="🏫"),
             ],
             "Account": [
@@ -412,3 +407,4 @@ else:
 
 # Run the selected page
 pg.run()
+

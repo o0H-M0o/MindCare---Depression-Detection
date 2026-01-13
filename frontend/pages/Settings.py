@@ -328,11 +328,11 @@ def edit_segment_dialog(segment):
     col_cancel, col_save = st.columns(2)
     
     with col_cancel:
-        if st.button("❌ Cancel", use_container_width=True):
+        if st.button("❌ Cancel", width='stretch'):
             st.rerun()
     
     with col_save:
-        if st.button("💾 Save", use_container_width=True, type="primary"):
+        if st.button("💾 Save", width='stretch', type="primary"):
             if not new_segment_name or not new_segment_name.strip():
                 st.error("Segment name cannot be empty")
             elif new_segment_name.strip() == segment_name:
@@ -407,11 +407,11 @@ def edit_student_dialog(student, inst_id):
     col_cancel, col_save = st.columns(2)
     
     with col_cancel:
-        if st.button("❌ Cancel", use_container_width=True):
+        if st.button("❌ Cancel", width='stretch'):
             st.rerun()
     
     with col_save:
-        if st.button("💾 Save Changes", use_container_width=True, type="primary"):
+        if st.button("💾 Save Changes", width='stretch', type="primary"):
             try:
                 # Update student ID in user_profile
                 if new_student_id != current_student_id:
@@ -453,7 +453,7 @@ def edit_staff_role_dialog(staff, admin_count):
         
         col_cancel = st.columns(1)[0]
         with col_cancel:
-            if st.button("❌ Close", use_container_width=True):
+            if st.button("❌ Close", width='stretch'):
                 st.rerun()
     else:
         # Only show the role that is NOT the current role
@@ -474,11 +474,11 @@ def edit_staff_role_dialog(staff, admin_count):
         col_cancel, col_update = st.columns(2)
         
         with col_cancel:
-            if st.button("❌ Cancel", use_container_width=True):
+            if st.button("❌ Cancel", width='stretch'):
                 st.rerun()
         
         with col_update:
-            if st.button("💾 Update Role", use_container_width=True, type="primary"):
+            if st.button("💾 Update Role", width='stretch', type="primary"):
                 try:
                     # Update staff role
                     db_client.supabase.table('institution_staff')\
@@ -510,7 +510,7 @@ def remove_staff_dialog(staff, admin_count):
         
         col_close = st.columns(1)[0]
         with col_close:
-            if st.button("❌ Close", use_container_width=True):
+            if st.button("❌ Close", width='stretch'):
                 st.rerun()
     else:
         st.warning("⚠️ This action cannot be undone. The staff member will lose access to this institution.")
@@ -523,11 +523,11 @@ def remove_staff_dialog(staff, admin_count):
         col_cancel, col_remove = st.columns(2)
         
         with col_cancel:
-            if st.button("❌ Cancel", use_container_width=True):
+            if st.button("❌ Cancel", width='stretch'):
                 st.rerun()
         
         with col_remove:
-            if st.button("🗑️ Remove Staff", use_container_width=True, type="secondary"):
+            if st.button("🗑️ Remove Staff", width='stretch', type="secondary"):
                 if confirm_remove:
                     try:
                         # Remove staff member by updating status to 'rejected'
@@ -1159,10 +1159,10 @@ if profile.get('account_type') == 'institution':
                                     with col_actions:
                                         col_approve, col_reject = st.columns(2)
                                         with col_approve:
-                                            if st.button("✅ Approve", key=f"approve_link_{link['id']}", use_container_width=True):
+                                            if st.button("✅ Approve", key=f"approve_link_{link['id']}", width='stretch'):
                                                 approve_link_dialog(link)
                                         with col_reject:
-                                            if st.button("❌ Reject", key=f"reject_link_{link['id']}", use_container_width=True):
+                                            if st.button("❌ Reject", key=f"reject_link_{link['id']}", width='stretch'):
                                                 reject_link_dialog(link)
                                 
                                 st.divider()
@@ -1313,13 +1313,13 @@ if profile.get('account_type') == 'institution':
                                         st.write(f"**{name}**")
                                         st.caption(f"📧 {email}")
                                     with col2:
-                                        if st.button("✅ Approve as Admin", key=f"approve_admin_{staff['id']}", use_container_width=True):
+                                        if st.button("✅ Approve as Admin", key=f"approve_admin_{staff['id']}", width='stretch'):
                                             approve_staff_dialog(staff, 'admin')
                                     with col3:
-                                        if st.button("✅ Approve as Viewer", key=f"approve_viewer_{staff['id']}", use_container_width=True):
+                                        if st.button("✅ Approve as Viewer", key=f"approve_viewer_{staff['id']}", width='stretch'):
                                             approve_staff_dialog(staff, 'viewer')
                                     with col4:
-                                        if st.button("❌ Reject", key=f"reject_{staff['id']}", use_container_width=True):
+                                        if st.button("❌ Reject", key=f"reject_{staff['id']}", width='stretch'):
                                             reject_staff_dialog(staff)
                     else:
                         with st.expander("⏳ Pending Staff Approvals", expanded=False):
@@ -1372,10 +1372,10 @@ if profile.get('account_type') == 'institution':
                                         is_last_admin = (admin_count == 1 and current_staff_role == 'admin')
                                         
                                         if is_last_admin:
-                                            st.button("✏️ Edit", key=f"edit_staff_{staff['id']}", use_container_width=True, disabled=True, help="Cannot edit the last admin")
+                                            st.button("✏️ Edit", key=f"edit_staff_{staff['id']}", width='stretch', disabled=True, help="Cannot edit the last admin")
                                         else:
                                             edit_key = f"edit_staff_{staff['id']}"
-                                            if st.button("✏️ Edit", key=edit_key, use_container_width=True):
+                                            if st.button("✏️ Edit", key=edit_key, width='stretch'):
                                                 edit_staff_role_dialog(staff, admin_count)
                                     
                                     with col_remove:
@@ -1383,10 +1383,10 @@ if profile.get('account_type') == 'institution':
                                         is_last_admin = (admin_count == 1 and current_staff_role == 'admin')
                                         
                                         if is_last_admin:
-                                            st.button("🗑️ Remove", key=f"remove_staff_{staff['id']}", use_container_width=True, disabled=True, help="Cannot remove the last admin")
+                                            st.button("🗑️ Remove", key=f"remove_staff_{staff['id']}", width='stretch', disabled=True, help="Cannot remove the last admin")
                                         else:
                                             remove_key = f"remove_staff_{staff['id']}"
-                                            if st.button("🗑️ Remove", key=remove_key, use_container_width=True):
+                                            if st.button("🗑️ Remove", key=remove_key, width='stretch'):
                                                 remove_staff_dialog(staff, admin_count)
                             
                     else:
@@ -1506,7 +1506,7 @@ if profile.get('account_type') == 'institution':
                                         with col_edit:
                                             # Edit button for this student
                                             edit_key = f"edit_student_{student['id']}"
-                                            if st.button("✏️ Edit", key=edit_key, use_container_width=True):
+                                            if st.button("✏️ Edit", key=edit_key, width='stretch'):
                                                 edit_student_dialog(student, inst_id)
                         
                     else:
@@ -1531,3 +1531,4 @@ if profile.get('account_type') == 'institution':
 if st.button("🚪 Logout", width='stretch', type="primary"):
     auth_service.logout()
     st.rerun()
+

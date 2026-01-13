@@ -240,3 +240,4 @@ def build_self_support_recommendation_prompt(
         "- 4-6 bullet points (actionable self-care + help-seeking steps)\n"
         "- One short closing disclaimer: this is not a diagnosis and professional support can help\n"
     )
+

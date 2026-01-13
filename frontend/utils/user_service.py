@@ -35,7 +35,7 @@ class UserService:
         # 1. Get users from direct relationships (parents/friends)
         try:
             relationships = self.supabase.table('user_relationships')\
-                .select('owner_id, view_analysis, user_profile!user_relationships_owner_id_fkey(id, name, account_type, student_id)')\
+                .select('owner_id, view_analysis, user_profile!user_relationships_owner_id_fkey(id, name, email, account_type, student_id)')\
                 .eq('viewer_id', viewer_id)\
                 .eq('view_analysis', True)\
                 .execute()
@@ -46,6 +46,7 @@ class UserService:
                         linked_users.append({
                             'id': rel['user_profile']['id'],
                             'name': rel['user_profile'].get('name', 'Anonymous'),
+                            'email': rel['user_profile'].get('email'),
                             'account_type': rel['user_profile'].get('account_type'),
                             'student_id': rel['user_profile'].get('student_id'),
                             'access_type': 'direct_relationship'
@@ -69,7 +70,7 @@ class UserService:
                     
                     # Get all users linked to this institution who share analysis and are approved
                     institution_links = self.supabase.table('user_institution_link')\
-                        .select('user_id, student_consent, segment_id, link_status, verification_status, user_profile!user_institution_link_user_fkey(id, name, account_type, student_id), institution_segments!user_institution_link_segment_id_fkey(segment_name)')\
+                        .select('user_id, student_consent, segment_id, link_status, verification_status, user_profile!user_institution_link_user_fkey(id, name, email, account_type, student_id), institution_segments!user_institution_link_segment_id_fkey(segment_name)')\
                         .eq('institution_id', institution_id)\
                         .eq('student_consent', True)\
                         .eq('link_status', 'active')\
@@ -84,6 +85,7 @@ class UserService:
                                 linked_users.append({
                                     'id': link['user_profile']['id'],
                                     'name': link['user_profile'].get('name', 'User'),
+                                    'email': link['user_profile'].get('email'),
                                     'account_type': link['user_profile'].get('account_type'),
                                     'student_id': link['user_profile'].get('student_id'),
                                     'access_type': 'institution',
@@ -245,3 +247,4 @@ class UserService:
         linked_ids = [u['id'] for u in linked]
         
         return target_user_id in linked_ids
+

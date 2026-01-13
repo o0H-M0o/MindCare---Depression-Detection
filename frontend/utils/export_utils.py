@@ -8,7 +8,7 @@ def df_to_csv_bytes(df):
         return None
 
 
-def figs_to_pdf_bytes(figs, title="Charts Report", status_text=None, metrics=None, guidance=None, ai_recommendation=None, images=None):
+def figs_to_pdf_bytes(figs, title="Charts Report", status_text=None, metrics=None, guidance=None, ai_recommendation=None, images=None, user_info=None):
     """
     Convert a list of plotly figures to a PDF report (bytes).
     Wrapper around dashboard_to_pdf_bytes for backwards compatibility.
@@ -16,6 +16,7 @@ def figs_to_pdf_bytes(figs, title="Charts Report", status_text=None, metrics=Non
     Returns PDF bytes, or raises ImportError with instructions if libraries missing.
     """
     dashboard_data = {
+        'user_info': user_info or {},
         'status_text': status_text or '',
         'metrics': metrics or {},
         'guidance': guidance or '',
@@ -59,9 +60,59 @@ def dashboard_to_pdf_bytes(dashboard_data, title="Dashboard Report"):
 
     try:
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        doc = SimpleDocTemplate(buffer, pagesize=letter, leftMargin=1*inch, rightMargin=1*inch, topMargin=0.8*inch, bottomMargin=0.9*inch)
         styles = getSampleStyleSheet()
         story = []
+
+        def _coerce_plotly_export_fig(fig):
+            """Return a copy of a plotly figure with PDF-safe styling.
+
+            Fixes two common export issues:
+            - Cropped labels due to small margins
+            - Unexpected black fills due to transparency / non-white backgrounds
+            """
+            try:
+                import plotly.graph_objects as go
+                export_fig = go.Figure(fig)
+            except Exception:
+                return fig
+
+            # Force an opaque white background (avoid PDF viewer alpha/black artifacts)
+            try:
+                export_fig.update_layout(
+                    template="plotly_white",
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
+                    font_color="black",
+                    legend=dict(bgcolor="rgba(255,255,255,1)")
+                )
+            except Exception:
+                pass
+
+            # Ensure minimum margins so axis labels/ticks aren't clipped
+            try:
+                m = export_fig.layout.margin
+                def _m(val, default):
+                    try:
+                        return int(val)
+                    except Exception:
+                        return default
+
+                ml = max(_m(getattr(m, "l", None), 0), 60)
+                mr = max(_m(getattr(m, "r", None), 0), 30)
+                mt = max(_m(getattr(m, "t", None), 0), 40)
+                mb = max(_m(getattr(m, "b", None), 0), 70)
+                export_fig.update_layout(margin=dict(l=ml, r=mr, t=mt, b=mb))
+            except Exception:
+                pass
+
+            # Avoid semi-transparent fills causing black artifacts in some PDF renderers
+            try:
+                export_fig.update_traces(opacity=1)
+            except Exception:
+                pass
+
+            return export_fig
 
         # Title - split into main title and subtitle
         if '(Generated on' in title:
@@ -126,6 +177,23 @@ def dashboard_to_pdf_bytes(dashboard_data, title="Dashboard Report"):
                 story.append(Paragraph(combined_text, styles['Normal']))
                 story.append(Spacer(1, 6))  # Add spacing after paragraphs
 
+        # User Info (rendered above Current Status)
+        if dashboard_data.get('user_info'):
+            user_style = styles['Heading2']
+            story.append(Paragraph("User Info", user_style))
+            info = dashboard_data.get('user_info')
+            if isinstance(info, dict):
+                for k, v in info.items():
+                    if v is None:
+                        continue
+                    v_str = str(v).strip()
+                    if v_str == "":
+                        continue
+                    story.append(Paragraph(f"<b>{k}:</b> {v_str}", styles['Normal']))
+            else:
+                story.append(Paragraph(str(info), styles['Normal']))
+            story.append(Spacer(1, 12))
+
         # Status Summary
         if dashboard_data.get('status_text'):
             status_style = styles['Heading2']
@@ -183,8 +251,15 @@ def dashboard_to_pdf_bytes(dashboard_data, title="Dashboard Report"):
                 
                 try:
                     # Try plotly's image export (will auto-detect available engines)
-                    img_bytes = pio.to_image(fig, format='png', width=500, height=400)
-                    img = RLImage(io.BytesIO(img_bytes), width=5*inch, height=4*inch)
+                    export_fig = _coerce_plotly_export_fig(fig)
+                    export_w = 1100
+                    export_h = 700
+                    img_bytes = pio.to_image(export_fig, format='png', width=export_w, height=export_h, scale=2)
+
+                    # Use full available width in the PDF to keep charts readable
+                    target_w = float(getattr(doc, "width", 6.5 * inch))
+                    target_h = target_w * (export_h / export_w)
+                    img = RLImage(io.BytesIO(img_bytes), width=target_w, height=target_h)
                     story.append(img)
                     story.append(Spacer(1, 12))
                 except Exception as e:
@@ -308,3 +383,4 @@ def dashboard_to_pdf_bytes(dashboard_data, title="Dashboard Report"):
     except Exception as e:
         traceback.print_exc()
         raise
+

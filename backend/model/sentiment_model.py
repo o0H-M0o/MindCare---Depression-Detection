@@ -139,3 +139,4 @@ class SentimentAnalyzer:
         except Exception as e:
             print(f"❌ Sentiment analysis error: {e}")
             return None
+
