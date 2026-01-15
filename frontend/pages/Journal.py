@@ -167,7 +167,9 @@ with tab1:
         user_name = st.text_input("Your name in the chat (optional):", key="whatsapp_user_name")
         st.divider()
         with st.expander("💡 How to get my WhatsApp chat history?"):
-            st.write("How to get your WhatsApp chat history:")
+            st.write("To export a WhatsApp chat, open the chat, tap the contact/group name (iPhone) or More options (Android), select Export Chat, choose Without Media, then share the resulting .txt file via email, cloud storage, or messaging apps")
+            image_path = Path(__file__).parent.parent / "utils" / "image" / "export_chat.png"
+            st.image(str(image_path), caption="Steps to export WhatsApp chat history")
         st.caption("The system will only process at most 50 recent messages from the uploaded file.")
         uploaded_file = st.file_uploader("Choose a WhatsApp export file (.txt)", type=['txt'], key="whatsapp_file_uploader")
 
