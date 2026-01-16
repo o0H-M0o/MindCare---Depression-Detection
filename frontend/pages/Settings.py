@@ -257,10 +257,28 @@ def delete_institution_dialog(link):
 def delete_segment_dialog(segment):
     """Dialog for confirming segment deletion"""
     segment_name = segment.get('segment_name', 'Unknown')
+
+    # Check for assigned users before allowing deletion
+    assigned_count = 0
+    try:
+        assigned_links = db_client.supabase.table('user_institution_link')\
+            .select('id')\
+            .eq('segment_id', segment['id'])\
+            .execute()
+        assigned_count = len(assigned_links.data) if assigned_links.data else 0
+    except Exception as e:
+        st.error(f"Error checking assignments: {e}")
+        assigned_count = 0
     
     st.warning("⚠️ **Confirm Deletion**")
+    if assigned_count > 0:
+        st.error(f"This segment is currently assigned to {assigned_count} user(s). Please reassign them before deleting.")
+        st.write("Deletion is disabled while users are assigned to this segment.")
+        if st.button("Close", width='stretch'):
+            st.rerun()
+        return
+
     st.write(f"Are you sure you want to delete the segment **{segment_name}**? This action cannot be undone.")
-    st.write("All users currently assigned to this segment will need to be reassigned.")
 
     conf_col1, conf_col2 = st.columns(2)
     with conf_col1:
@@ -275,6 +293,10 @@ def delete_segment_dialog(segment):
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
+
+    with conf_col2:
+        if st.button("❌ Cancel", width='stretch'):
+            st.rerun()
 
 @st.dialog("Confirm Add Segment")
 def add_segment_dialog(segment_name, institution_id):
@@ -1214,6 +1236,20 @@ if profile.get('account_type') == 'institution':
                         .eq('institution_id', institution_id)\
                         .order('segment_name')\
                         .execute()
+
+                    # Preload assignment counts to control delete button availability
+                    assignment_counts = {}
+                    try:
+                        segment_links = db_client.supabase.table('user_institution_link')\
+                            .select('segment_id')\
+                            .eq('institution_id', institution_id)\
+                            .execute()
+                        for link in (segment_links.data or []):
+                            seg_id = link.get('segment_id')
+                            if seg_id:
+                                assignment_counts[seg_id] = assignment_counts.get(seg_id, 0) + 1
+                    except Exception as e:
+                        st.error(f"Error loading segment assignments: {e}")
                     
                     if segments.data and len(segments.data) > 0:
                         st.write(f"**{len(segments.data)} segment(s):**")
@@ -1221,16 +1257,28 @@ if profile.get('account_type') == 'institution':
                         with st.expander("📂 All Segments", expanded=False):
                             for segment in segments.data:
                                 with st.container():
-                                    col_name, col_edit = st.columns([3, 1])
+                                    col_name, col_actions = st.columns([3, 1])
                                     with col_name:
                                         st.markdown(f"""
 <div style="background-color: #f8f9fa; padding: 8px; border-radius: 4px; border-left: 4px solid #6c757d;">
 {segment['segment_name']}
 </div>
 """, unsafe_allow_html=True)
-                                    with col_edit:
-                                        if st.button("✏️", key=f"edit_seg_{segment['id']}", help="Edit segment"):
-                                            edit_segment_dialog(segment) 
+                                    with col_actions:
+                                        action_col1, action_col2 = st.columns(2)
+                                        with action_col1:
+                                            if st.button("✏️", key=f"edit_seg_{segment['id']}", help="Edit segment"):
+                                                edit_segment_dialog(segment)
+                                        with action_col2:
+                                            assigned_count = assignment_counts.get(segment['id'], 0)
+                                            delete_help = "Delete segment" if assigned_count == 0 else "Cannot delete: users are assigned"
+                                            if st.button(
+                                                "🗑️",
+                                                key=f"delete_seg_{segment['id']}",
+                                                help=delete_help,
+                                                disabled=assigned_count > 0
+                                            ):
+                                                delete_segment_dialog(segment)
                     else:
                         st.info("No segments created yet")
                     
