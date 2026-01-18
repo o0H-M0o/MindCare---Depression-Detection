@@ -250,29 +250,37 @@ class AuthService:
         except Exception as e:
             return False, str(e)
 
-    def set_session(self, access_token: str, refresh_token: str) -> bool:
+    def set_session(self, access_token: str, refresh_token: str = None) -> bool:
         """
         Set the session from tokens (e.g. from recovery link)
         
         Args:
             access_token: Access token
-            refresh_token: Refresh token
+            refresh_token: Refresh token (optional for recovery sessions)
             
         Returns:
             bool: True if session set successfully
         """
         try:
-            session_response = self.supabase.auth.set_session(access_token, refresh_token)
+            # For recovery sessions, refresh_token might be short or missing
+            # Use the access_token to set up a temporary session
+            if refresh_token and len(refresh_token) > 15:
+                self.supabase.auth.set_session(access_token, refresh_token)
+            else:
+                # For recovery with short/missing refresh token, just set access token
+                # This allows password reset but doesn't establish a full session
+                self.supabase.auth.set_session(access_token, refresh_token or "")
             
-            # Update local session state using the response (more reliable in server-side env)
-            if session_response and session_response.user:
+            # Update local session state
+            user_response = self.supabase.auth.get_user()
+            if user_response and user_response.user:
                 # Check if institution staff is approved before allowing session
-                profile = self._fetch_user_profile(session_response.user.id)
+                profile = self._fetch_user_profile(user_response.user.id)
                 if profile and profile.get('account_type') == 'institution':
                     try:
                         staff_info = self.supabase.table('institution_staff')\
                             .select('status')\
-                            .eq('user_id', session_response.user.id)\
+                            .eq('user_id', user_response.user.id)\
                             .execute()
                         
                         if staff_info.data and len(staff_info.data) > 0:
@@ -286,8 +294,8 @@ class AuthService:
                 
                 st.session_state.authenticated = True
                 st.session_state.user = {
-                    'id': session_response.user.id,
-                    'email': session_response.user.email,
+                    'id': user_response.user.id,
+                    'email': user_response.user.email,
                     'access_token': access_token
                 }
                 

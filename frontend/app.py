@@ -53,8 +53,8 @@ access_token = _qp_first("access_token", "")
 refresh_token = _qp_first("refresh_token", "")
 
 if type_param == "recovery" and access_token:
-    
-    if auth_service.set_session(access_token, refresh_token):
+    # For recovery, refresh_token might be short/optional
+    if auth_service.set_session(access_token, refresh_token or ""):
         st.success("Password reset verified! Please set your new password.")
         
         with st.form("reset_password_form"):
