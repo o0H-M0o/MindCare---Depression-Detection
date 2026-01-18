@@ -305,6 +305,9 @@ with tab1:
                             chunk = " ".join(words[start:start + max_words]).strip()
                             if chunk and len(chunk.split()) >= 50:
                                 chunks.append(chunk)
+                        
+                        # Limit to maximum 3 chunks to prevent excessive processing
+                        chunks = chunks[:3]
 
                         if not chunks:
                             st.warning("⚠️ Combined text is empty after preprocessing.")
@@ -655,6 +658,9 @@ with tab1:
                             chunk = " ".join(words[start:start + max_words]).strip()
                             if chunk and len(chunk.split()) >= 50:
                                 chunks.append(chunk)
+                        
+                        # Limit to maximum 3 chunks to prevent excessive processing
+                        chunks = chunks[:3]
 
                         if not chunks:
                             st.warning("⚠️ Combined text is empty after preprocessing.")
