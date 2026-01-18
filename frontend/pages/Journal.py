@@ -35,6 +35,21 @@ from model.sentiment_model import SentimentAnalyzer
 # Template URL
 TEMPLATE_URL = "https://amnfjolprnnqfqskrlrh.supabase.co/storage/v1/object/public/excel_template/Template.xlsx"
 
+def limit_records_by_word_count(records, text_key: str, max_words: int) -> list:
+    """Limit records to the most recent items whose combined word count stays within max_words."""
+    limited = []
+    total_words = 0
+    for record in records:
+        text = str(record.get(text_key, "")).strip()
+        if not text:
+            continue
+        words = len(text.split())
+        if total_words + words > max_words:
+            break
+        limited.append(record)
+        total_words += words
+    return limited
+
 def parse_whatsapp_chat(content: str, user_name: str = None) -> pd.DataFrame:
     """Parse WhatsApp chat export and return DataFrame with date, time, text columns."""
     lines = content.strip().split('\n')
@@ -160,22 +175,22 @@ tab1, tab2 = st.tabs(["Upload for Analysis", "Quick Entry"])
 with tab1:
     st.subheader("Upload for Analysis")
     st.write("You can add writing you’d like to reflect on by uploading a file. This could be chat histories, social media posts, or notes you’ve written.")
-    
+    st.write("The system will return the overall analysis for the uploaded file.")
     with st.expander("📄 Option 1: WhatsApp Chat History"):
         st.write("**Optional: Choose Messages to Include**")
         st.write("If the chat includes multiple people, you can choose which person's messages you'd like to include for reflection.")
-        user_name = st.text_input("Your name in the chat (optional):", key="whatsapp_user_name")
+        user_name = st.text_input("Your username in the chat history (optional):", key="whatsapp_user_name")
         st.divider()
         with st.expander("💡 How to get my WhatsApp chat history?"):
             st.write("To export a WhatsApp chat, open the chat, tap the contact/group name (iPhone) or More options (Android), select Export Chat, choose Without Media, then share the resulting .txt file via email, cloud storage, or messaging apps")
             image_path = Path(__file__).parent.parent / "utils" / "image" / "export_chat.png"
             st.image(str(image_path), caption="Steps to export WhatsApp chat history")
-        st.caption("The system will only process at most 50 recent messages from the uploaded file.")
+        st.caption("The system will process recent messages up to about 800 words.")
         uploaded_file = st.file_uploader("Choose a WhatsApp export file (.txt)", type=['txt'], key="whatsapp_file_uploader")
 
         if uploaded_file is not None:
             if st.button("🕵️ Save & Analyse", key="analyse_whatsapp_messages", width='stretch'):
-                with st.spinner("Processing and analyzing WhatsApp chat...It may take a few minutes to complete. Please don't close the app."):
+                with st.spinner("🔍 Analyzing text... Please stay on the page while analysis completes."):
                     try:
                         # Step 1: Read and decode file
                         try:
@@ -194,15 +209,23 @@ with tab1:
                             
                             # Reverse the order so latest messages appear first
                             messages_df = messages_df[::-1]
-                            
-                            # Limit to last 50 messages (most recent)
-                            messages_df = messages_df.head(50)
-                            
+
                             # Check if we have valid data
                             if messages_df.empty or 'Date' not in messages_df.columns or 'Time' not in messages_df.columns or 'Text' not in messages_df.columns:
                                 st.warning("⚠️ No messages found in the uploaded file.")
                                 st.info("💡 This could happen if:\n- The file format doesn't match WhatsApp export\n- No messages from the specified user (if name was provided)\n- The chat export is empty")
                                 st.stop()
+
+                            # Limit by total word count (most recent first)
+                            recent_records = messages_df.to_dict(orient='records')
+                            total_words_all = sum(len(str(r.get("Text", "")).strip().split()) for r in recent_records)
+                            limited_records = limit_records_by_word_count(recent_records, "Text", max_words=800)
+                            if total_words_all > 800:
+                                st.warning(f"Your file contains {total_words_all} words. Only the most recent messages up to 800 words will be saved and analyzed. Messages beyond this limit will be excluded.")
+                            if not limited_records:
+                                st.warning("⚠️ No messages were kept within the 800-word limit.")
+                                st.stop()
+                            messages_df = pd.DataFrame(limited_records)
                             
                             # Sort ascending by Date and Time
                             messages_df = messages_df.sort_values(by=['Date', 'Time'], ascending=True)
@@ -287,7 +310,6 @@ with tab1:
                             progress.progress((i / max(total, 1)) * 0.5)
 
                         # Step 4b: Analyze combined messages once (chunked if too long)
-                        status.write("🔍 Analyzing  text... Please stay on the page while analysis completes.")
 
                         if not entries_to_analyze:
                             st.warning("⚠️ No messages were saved for analysis.")
@@ -306,8 +328,8 @@ with tab1:
                             if chunk and len(chunk.split()) >= 50:
                                 chunks.append(chunk)
                         
-                        # Limit to maximum 3 chunks to prevent excessive processing
-                        chunks = chunks[:3]
+                        # Limit to maximum 2 chunks to prevent excessive processing
+                        chunks = chunks[:2]
 
                         if not chunks:
                             st.warning("⚠️ Combined text is empty after preprocessing.")
@@ -468,7 +490,7 @@ with tab1:
         if uploaded_excel is not None:
 
             if st.button("🕵️ Save & Analyse", key="analyse_excel_template", width='stretch'):
-                with st.spinner("Processing and analyzing Excel template...It may take a few minutes to complete. Please don't close the app."):
+                with st.spinner("🔍 Analyzing text... Please stay on the page while analysis completes."):
                     try:
                         # Step 1: Read Excel
                         try:
@@ -570,8 +592,12 @@ with tab1:
                         if errors:
                             st.warning(f"⚠️ Skipped {errors} invalid row(s).")
 
-                        # Limit to last 50 messages (most recent by Date/Time)
-                        records = sorted(records, key=lambda r: (r['Date'], r['Time']), reverse=True)[:50]
+                        # Limit by total word count (most recent by Date/Time)
+                        records = sorted(records, key=lambda r: (r['Date'], r['Time']), reverse=True)
+                        total_words_all = sum(len(str(r.get("Text", "")).strip().split()) for r in records)
+                        records = limit_records_by_word_count(records, "Text", max_words=800)
+                        if total_words_all > 800:
+                            st.warning(f"Your file contains {total_words_all} words. Only the most recent rows up to 800 words will be saved and analyzed. Rows beyond this limit will be excluded.")
                         records = sorted(records, key=lambda r: (r['Date'], r['Time']), reverse=False)
 
                         # Step 4: Initialize models
@@ -642,8 +668,6 @@ with tab1:
 
                             progress.progress((i / max(total, 1)) * 0.5)
 
-                        status.write("🔍 Analyzing text... Please stay on the page while analysis completes.")
-
                         if not entries_to_analyze:
                             st.warning("⚠️ No rows were saved for analysis.")
                             st.stop()
@@ -659,8 +683,8 @@ with tab1:
                             if chunk and len(chunk.split()) >= 50:
                                 chunks.append(chunk)
                         
-                        # Limit to maximum 3 chunks to prevent excessive processing
-                        chunks = chunks[:3]
+                        # Limit to maximum 2 chunks to prevent excessive processing
+                        chunks = chunks[:2]
 
                         if not chunks:
                             st.warning("⚠️ Combined text is empty after preprocessing.")
