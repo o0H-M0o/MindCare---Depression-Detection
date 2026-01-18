@@ -236,8 +236,11 @@ def render_forgot_password_form(auth_service: AuthService):
                     import os
                     # Prefer Streamlit Cloud secrets, then env var, then localhost for local dev
                     try:
-                        local_site_url = st.secrets["LOCAL_SITE_URL"]
-                    except KeyError:
+                        local_site_url = st.secrets.get("LOCAL_SITE_URL")
+                    except Exception:
+                        local_site_url = None
+
+                    if not local_site_url:
                         local_site_url = os.getenv("LOCAL_SITE_URL", "http://localhost:8501")
                     
                     success, error = auth_service.send_password_reset_email(email, local_site_url)
