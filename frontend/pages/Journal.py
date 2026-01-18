@@ -221,13 +221,21 @@ with tab1:
                             st.info("💡 This might be a temporary issue. Please try again later.")
                             st.stop()
 
+                        # Step 3b: Require minimum words in combined text before saving
+                        joined_preview = "\n".join([str(t).strip() for t in messages_df["Text"].tolist() if str(t).strip()])
+                        cleaned_preview = clean_entry(joined_preview) or joined_preview
+                        preview_word_count = len(cleaned_preview.split())
+                        if preview_word_count < 50:
+                            st.warning("⚠️ The uploaded file doesn't contain enough text. Please upload at least 50 words before saving.")
+                            st.stop()
+
                         # Step 4: Save and analyze messages
                         analysis_delay_seconds = 1.2
                         total = len(messages_df)
                         progress = st.progress(0)
                         status = st.empty()
 
-                        # Step 4a: Save all messages as pending first
+                        # Step 4a: Save all messages as file_pending first
                         status.write("💾 Saving all messages...")
                         entries_to_analyze = []
                         uploaded_file_name = f"{uploaded_file.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -273,83 +281,86 @@ with tab1:
                                     st.stop()
 
                             if entry_id:
+                                db_client.update_journal_entry_status(entry_id, 'file_pending')
                                 entries_to_analyze.append((entry_id, entry_text))
 
-                            progress.progress(i / (total * 2))  # Half progress for saving
+                            progress.progress((i / max(total, 1)) * 0.5)
 
-                        # Step 4b: Analyze each saved entry
-                        status.write("🔍 Analyzing saved messages...")
-                        for i, (entry_id, entry_text) in enumerate(entries_to_analyze, start=1):
-                            db_client.update_journal_entry_status(entry_id, 'processing')
+                        # Step 4b: Analyze combined messages once (chunked if too long)
+                        status.write("🔍 Analyzing combined messages...")
 
-                            try:
-                                cleaned_text = clean_entry(entry_text)
-                                texts = [cleaned_text] if cleaned_text else [entry_text]
+                        if not entries_to_analyze:
+                            st.warning("⚠️ No messages were saved for analysis.")
+                            st.stop()
 
-                                assessment_results = bdi_model.assess_all_symptoms(texts)
-                                total_score = calculate_total_score(assessment_results)
-                                category = get_depression_category(total_score)
+                        # Join all saved messages for a single analysis pass
+                        joined_text = "\n".join([t for _, t in entries_to_analyze if t])
+                        cleaned_joined = clean_entry(joined_text) or joined_text
 
-                                db_client.save_assessment(
-                                    entry_id=entry_id,
-                                    assessment_data=assessment_results,
-                                    total_score=total_score,
-                                    category=category,
-                                )
+                        # Chunk by preprocessing limit (max words)
+                        max_words = 400
+                        words = cleaned_joined.split()
+                        chunks = []
+                        for start in range(0, len(words), max_words):
+                            chunk = " ".join(words[start:start + max_words]).strip()
+                            if chunk and len(chunk.split()) >= 50:
+                                chunks.append(chunk)
 
-                                try:
-                                    sentiment_result = sentiment_analyzer.analyze(cleaned_text or entry_text)
-                                    if sentiment_result:
-                                        scores = sentiment_result.get('scores', {})
-                                        db_client.save_sentiment_analysis(
-                                            entry_id=entry_id,
-                                            top_label=sentiment_result.get('label'),
-                                            positive_score=float(scores.get('Positive', 0.0)),
-                                            neutral_score=float(scores.get('Neutral', 0.0)),
-                                            negative_score=float(scores.get('Negative', 0.0)),
-                                        )
-                                except Exception:
-                                    pass  # Sentiment analysis failure doesn't stop the process
+                        if not chunks:
+                            st.warning("⚠️ Combined text is empty after preprocessing.")
+                            st.stop()
 
-                                db_client.update_journal_entry_status(entry_id, 'completed')
-                            except Exception as e:
-                                db_client.update_journal_entry_status(entry_id, 'failed', str(e))
-                                # Continue with other messages even if one fails
-
-                            progress.progress((len(entries_to_analyze) + i) / (total * 2))
-                            time.sleep(analysis_delay_seconds)
-
-                        status.write("✅ Finished saving and analyzing uploaded messages.")
-
-                        # Show average results for the uploaded file
-                        total_scores = []
+                        assessment_results_list = []
                         pos_scores = []
                         neu_scores = []
                         neg_scores = []
 
-                        for entry_id, _ in entries_to_analyze:
-                            assessment = db_client.get_assessment_by_entry(entry_id)
-                            sentiment = db_client.get_sentiment_by_entry(entry_id)
-                            
-                            if assessment:
-                                total_scores.append(assessment['total_score'])
-                            if sentiment:
-                                pos_scores.append(sentiment['positive_score'])
-                                neu_scores.append(sentiment['neutral_score'])
-                                neg_scores.append(sentiment['negative_score'])
+                        total_steps = max(total + len(chunks), 1)
+                        for idx, chunk in enumerate(chunks, start=1):
+                            try:
+                                assessment_results = bdi_model.assess_all_symptoms([chunk])
+                                assessment_results_list.append(assessment_results)
 
-                        if total_scores:
-                            avg_score = sum(total_scores) / len(total_scores)
-                            avg_category = get_depression_category(avg_score)
+                                sentiment_result = sentiment_analyzer.analyze(chunk)
+                                if sentiment_result:
+                                    scores = sentiment_result.get('scores', {})
+                                    pos_scores.append(float(scores.get('Positive', 0.0)))
+                                    neu_scores.append(float(scores.get('Neutral', 0.0)))
+                                    neg_scores.append(float(scores.get('Negative', 0.0)))
+                            except Exception:
+                                # Continue even if a chunk fails
+                                pass
+
+                            progress.progress((total + idx) / total_steps)
+                            time.sleep(analysis_delay_seconds)
+
+                        # Aggregate assessment results across chunks
+                        if assessment_results_list:
+                            qids = list(assessment_results_list[0].keys())
+                            aggregated_results = {}
+                            for qid in qids:
+                                levels = [r.get(qid, {}).get('level', 0) for r in assessment_results_list]
+                                avg_level = round(sum(levels) / max(len(levels), 1))
+                                base = assessment_results_list[0].get(qid, {})
+                                aggregated_results[qid] = {
+                                    "level": avg_level,
+                                    "reason": f"Aggregated from {len(assessment_results_list)} part(s)",
+                                    "symptom": base.get("symptom"),
+                                }
+
+                            total_score = calculate_total_score(aggregated_results)
+                            avg_category = get_depression_category(total_score)
                         else:
+                            aggregated_results = {}
+                            total_score = 0
                             avg_category = 'N/A'
 
+                        # Average sentiment across chunks
                         if pos_scores:
                             avg_pos = sum(pos_scores) / len(pos_scores)
                             avg_neu = sum(neu_scores) / len(neu_scores)
                             avg_neg = sum(neg_scores) / len(neg_scores)
-                            
-                            # Determine top sentiment
+
                             if avg_pos > avg_neu and avg_pos > avg_neg:
                                 avg_sentiment = 'Positive'
                             elif avg_neu > avg_pos and avg_neu > avg_neg:
@@ -357,7 +368,34 @@ with tab1:
                             else:
                                 avg_sentiment = 'Negative'
                         else:
+                            avg_pos = avg_neu = avg_neg = 0.0
                             avg_sentiment = 'N/A'
+
+                        # Save the same results to all file_pending entries for this upload
+                        for entry_id, _ in entries_to_analyze:
+                            try:
+                                if aggregated_results:
+                                    db_client.save_assessment(
+                                        entry_id=entry_id,
+                                        assessment_data=aggregated_results,
+                                        total_score=total_score,
+                                        category=avg_category,
+                                    )
+
+                                if avg_sentiment != 'N/A':
+                                    db_client.save_sentiment_analysis(
+                                        entry_id=entry_id,
+                                        top_label=avg_sentiment,
+                                        positive_score=avg_pos,
+                                        neutral_score=avg_neu,
+                                        negative_score=avg_neg,
+                                    )
+
+                                db_client.update_journal_entry_status(entry_id, 'completed')
+                            except Exception as e:
+                                db_client.update_journal_entry_status(entry_id, 'failed', str(e))
+
+                        status.write("✅ Finished saving and analyzing uploaded messages.")
 
                         # Conclusion like Tab 2
                         sentiment_messages = {
@@ -391,10 +429,11 @@ with tab1:
                             st.markdown(f'<div style="background-color: #fef2f2; color: #ad1457; padding: 10px; border-radius: 5px; border-left: 5px solid #e91e63;">{result_text.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
                         else:
                             st.markdown(f'<div style="background-color: #f0f8ff; color: #1565c0; padding: 10px; border-radius: 5px; border-left: 5px solid #42a5f5;">{result_text.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
-                                
+                        st.write("")      
                     except Exception as e:
                         st.error(f"❌ Unexpected error during processing: {str(e)}")
                         st.info("💡 Please try again or contact support if the problem persists.")
+                        st.write("")
     
     with st.expander("📝 Option 2: Other Sources"):
         st.write("Use this option if your writing comes from other places, such as social media posts, notes, or conversations from other apps")
@@ -541,6 +580,14 @@ with tab1:
                             st.info("💡 This might be a temporary issue. Please try again later.")
                             st.stop()
 
+                        # Step 4b: Require minimum words in combined text before saving
+                        joined_preview = "\n".join([str(r.get('Text', '')).strip() for r in records if str(r.get('Text', '')).strip()])
+                        cleaned_preview = clean_entry(joined_preview) or joined_preview
+                        preview_word_count = len(cleaned_preview.split())
+                        if preview_word_count < 50:
+                            st.warning("⚠️ The uploaded file doesn't contain enough text. Please upload at least 50 words before saving.")
+                            st.stop()
+
                         # Step 5: Save and analyze
                         analysis_delay_seconds = 1.2
                         total = len(records)
@@ -587,72 +634,73 @@ with tab1:
                                 st.stop()
 
                             if entry_id:
+                                db_client.update_journal_entry_status(entry_id, 'file_pending')
                                 entries_to_analyze.append((entry_id, entry_text))
 
-                            progress.progress(i / (total * 2))
+                            progress.progress((i / max(total, 1)) * 0.5)
 
-                        status.write("🔍 Analyzing saved rows...")
-                        for i, (entry_id, entry_text) in enumerate(entries_to_analyze, start=1):
-                            db_client.update_journal_entry_status(entry_id, 'processing')
-                            try:
-                                cleaned_text = clean_entry(entry_text)
-                                texts = [cleaned_text] if cleaned_text else [entry_text]
+                        status.write("🔍 Analyzing combined rows...")
 
-                                assessment_results = bdi_model.assess_all_symptoms(texts)
-                                total_score = calculate_total_score(assessment_results)
-                                category = get_depression_category(total_score)
+                        if not entries_to_analyze:
+                            st.warning("⚠️ No rows were saved for analysis.")
+                            st.stop()
 
-                                db_client.save_assessment(
-                                    entry_id=entry_id,
-                                    assessment_data=assessment_results,
-                                    total_score=total_score,
-                                    category=category,
-                                )
+                        joined_text = "\n".join([t for _, t in entries_to_analyze if t])
+                        cleaned_joined = clean_entry(joined_text) or joined_text
 
-                                try:
-                                    sentiment_result = sentiment_analyzer.analyze(cleaned_text or entry_text)
-                                    if sentiment_result:
-                                        scores = sentiment_result.get('scores', {})
-                                        db_client.save_sentiment_analysis(
-                                            entry_id=entry_id,
-                                            top_label=sentiment_result.get('label'),
-                                            positive_score=float(scores.get('Positive', 0.0)),
-                                            neutral_score=float(scores.get('Neutral', 0.0)),
-                                            negative_score=float(scores.get('Negative', 0.0)),
-                                        )
-                                except Exception:
-                                    pass
+                        max_words = 400
+                        words = cleaned_joined.split()
+                        chunks = []
+                        for start in range(0, len(words), max_words):
+                            chunk = " ".join(words[start:start + max_words]).strip()
+                            if chunk and len(chunk.split()) >= 50:
+                                chunks.append(chunk)
 
-                                db_client.update_journal_entry_status(entry_id, 'completed')
-                            except Exception as e:
-                                db_client.update_journal_entry_status(entry_id, 'failed', str(e))
+                        if not chunks:
+                            st.warning("⚠️ Combined text is empty after preprocessing.")
+                            st.stop()
 
-                            progress.progress((len(entries_to_analyze) + i) / (total * 2))
-                            time.sleep(analysis_delay_seconds)
-
-                        status.write("✅ Finished saving and analyzing uploaded Excel rows.")
-
-                        # Summary (same approach as WhatsApp)
-                        total_scores = []
+                        assessment_results_list = []
                         pos_scores = []
                         neu_scores = []
                         neg_scores = []
 
-                        for entry_id, _ in entries_to_analyze:
-                            assessment = db_client.get_assessment_by_entry(entry_id)
-                            sentiment = db_client.get_sentiment_by_entry(entry_id)
+                        total_steps = max(total + len(chunks), 1)
+                        for idx, chunk in enumerate(chunks, start=1):
+                            try:
+                                assessment_results = bdi_model.assess_all_symptoms([chunk])
+                                assessment_results_list.append(assessment_results)
 
-                            if assessment:
-                                total_scores.append(assessment['total_score'])
-                            if sentiment:
-                                pos_scores.append(sentiment['positive_score'])
-                                neu_scores.append(sentiment['neutral_score'])
-                                neg_scores.append(sentiment['negative_score'])
+                                sentiment_result = sentiment_analyzer.analyze(chunk)
+                                if sentiment_result:
+                                    scores = sentiment_result.get('scores', {})
+                                    pos_scores.append(float(scores.get('Positive', 0.0)))
+                                    neu_scores.append(float(scores.get('Neutral', 0.0)))
+                                    neg_scores.append(float(scores.get('Negative', 0.0)))
+                            except Exception:
+                                pass
 
-                        if total_scores:
-                            avg_score = sum(total_scores) / len(total_scores)
-                            avg_category = get_depression_category(avg_score)
+                            progress.progress((total + idx) / total_steps)
+                            time.sleep(analysis_delay_seconds)
+
+                        if assessment_results_list:
+                            qids = list(assessment_results_list[0].keys())
+                            aggregated_results = {}
+                            for qid in qids:
+                                levels = [r.get(qid, {}).get('level', 0) for r in assessment_results_list]
+                                avg_level = round(sum(levels) / max(len(levels), 1))
+                                base = assessment_results_list[0].get(qid, {})
+                                aggregated_results[qid] = {
+                                    "level": avg_level,
+                                    "reason": f"Aggregated from {len(assessment_results_list)} part(s)",
+                                    "symptom": base.get("symptom"),
+                                }
+
+                            total_score = calculate_total_score(aggregated_results)
+                            avg_category = get_depression_category(total_score)
                         else:
+                            aggregated_results = {}
+                            total_score = 0
                             avg_category = 'N/A'
 
                         if pos_scores:
@@ -667,7 +715,33 @@ with tab1:
                             else:
                                 avg_sentiment = 'Negative'
                         else:
+                            avg_pos = avg_neu = avg_neg = 0.0
                             avg_sentiment = 'N/A'
+
+                        for entry_id, _ in entries_to_analyze:
+                            try:
+                                if aggregated_results:
+                                    db_client.save_assessment(
+                                        entry_id=entry_id,
+                                        assessment_data=aggregated_results,
+                                        total_score=total_score,
+                                        category=avg_category,
+                                    )
+
+                                if avg_sentiment != 'N/A':
+                                    db_client.save_sentiment_analysis(
+                                        entry_id=entry_id,
+                                        top_label=avg_sentiment,
+                                        positive_score=avg_pos,
+                                        neutral_score=avg_neu,
+                                        negative_score=avg_neg,
+                                    )
+
+                                db_client.update_journal_entry_status(entry_id, 'completed')
+                            except Exception as e:
+                                db_client.update_journal_entry_status(entry_id, 'failed', str(e))
+
+                        status.write("✅ Finished saving and analyzing uploaded Excel rows.")
 
                         sentiment_messages = {
                             "Positive": "<strong>Positive</strong> mood 😊",
@@ -698,11 +772,11 @@ with tab1:
                             st.markdown(f'<div style="background-color: #fef2f2; color: #ad1457; padding: 10px; border-radius: 5px; border-left: 5px solid #e91e63;">{result_text.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
                         else:
                             st.markdown(f'<div style="background-color: #f0f8ff; color: #1565c0; padding: 10px; border-radius: 5px; border-left: 5px solid #42a5f5;">{result_text.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
-
+                        st.write("")
                     except Exception as e:
                         st.error(f"❌ Unexpected error during processing: {str(e)}")
                         st.info("💡 Please try again or contact support if the problem persists.")
-        
+                        st.write("")
 
     st.divider()
     st.subheader("📊 Recent Analyses")
@@ -751,9 +825,7 @@ with tab1:
                     sent_label = sentiment['top_label'] if sentiment else 'N/A'
                     
                     table_data.append({
-                        'Message': entry['text'][:50] + '...' if len(entry['text']) > 50 else entry['text'],
-                        'Depression Level': dep_cat,
-                        'Sentiment': sent_label
+                        'Message': entry['text'][:50] + '...' if len(entry['text']) > 50 else entry['text']
                     })
                     
                     if assessment:
@@ -774,8 +846,7 @@ with tab1:
                     avg_pos = sum(pos_scores) / len(pos_scores)
                     avg_neu = sum(neu_scores) / len(neu_scores)
                     avg_neg = sum(neg_scores) / len(neg_scores)
-                    
-                    # Determine top sentiment
+
                     if avg_pos > avg_neu and avg_pos > avg_neg:
                         avg_sentiment = 'Positive'
                     elif avg_neu > avg_pos and avg_neu > avg_neg:
@@ -816,7 +887,7 @@ with tab1:
                 else:
                     st.markdown(f'<div style="background-color: #f0f8ff; color: #1565c0; padding: 10px; border-radius: 5px; border-left: 5px solid #42a5f5;">{result_text.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
 
-                # Table: Message, Depression, Sentiment
+                # Table: Message
                 st.write("")
                 st.dataframe(table_data, width='stretch', hide_index=True)
     else:
@@ -839,7 +910,9 @@ with tab2:
         word_count = len(journal_text.split())
         max_words = 400
         
-        if word_count > max_words:
+        if word_count < 50:
+            st.write(f"⚠️ **{word_count} / 50 words** - Please write at least 50 words for meaningful analysis")
+        elif word_count > max_words:
             st.write(f"⚠️ **{word_count} / {max_words} words** - Please keep your entry under {max_words} words")
         elif word_count > max_words * 0.9:  # Warning at 90%
             st.write(f"📝 **{word_count} / {max_words} words** - Approaching word limit")

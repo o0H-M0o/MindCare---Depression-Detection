@@ -33,7 +33,7 @@ def clean_entry(text: str) -> Optional[str]:
     text = text.strip()
     
     # 2. Remove very short texts (likely accidental submissions)
-    if len(text) < 5:  # More lenient than 15 for journal entries
+    if len(text) < 50:  # Minimum 50 characters for meaningful content
         return None
     
     # 3. Remove URLs (not needed in journal entries)
@@ -55,13 +55,13 @@ def clean_entry(text: str) -> Optional[str]:
     
     # 7. Final validation - must have actual content
     words = text.split()
-    if len(words) < 2:  # At least 2 words
+    if len(words) < 50:  # At least 50 words
         return None
     
     return text
 
 
-def validate_and_clean_entry(text: str, *, min_chars: int = 5, min_words: int = 2, max_words: int = 400) -> ValidationResult:
+def validate_and_clean_entry(text: str, *, min_chars: int = 50, min_words: int = 50, max_words: int = 400) -> ValidationResult:
     """
     Validate and clean a journal entry in one place.
 
@@ -72,7 +72,7 @@ def validate_and_clean_entry(text: str, *, min_chars: int = 5, min_words: int = 
     # Run the core cleaner which handles emptiness, urls, punctuation and short texts
     cleaned = clean_entry(text)
     if not cleaned:
-        return ValidationResult(success=False, message="⚠️ Please write a meaningful entry (at least a few words, not only symbols or URLs).", code="NO_CONTENT")
+        return ValidationResult(success=False, message="⚠️ Please write a meaningful entry (at least 50 words, not only symbols or URLs).", code="NO_CONTENT")
 
     # Additional UI-level checks
     if len(cleaned) < min_chars:

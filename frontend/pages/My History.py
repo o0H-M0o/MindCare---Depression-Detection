@@ -457,9 +457,7 @@ try:
                         table_data.append({
                             'Date': entry['date'],
                             'Time': entry_time_formatted,
-                            'Message': entry['text'][:50] + '...' if len(entry['text']) > 50 else entry['text'],
-                            'Depression Level': dep_cat,
-                            'Sentiment': sent_label
+                            'Message': entry['text'][:50] + '...' if len(entry['text']) > 50 else entry['text']
                         })
 
                         if assessment:
@@ -522,7 +520,7 @@ try:
                     else:
                         st.markdown(f'<div style="background-color: #f0f8ff; color: #1565c0; padding: 10px; border-radius: 5px; border-left: 5px solid #42a5f5;">{result_text.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
 
-                    # Table: Message, Depression, Sentiment
+                    # Table: Date, Time, Message
                     st.write("")
                     st.dataframe(table_data, width='stretch', hide_index=True)
 
