@@ -221,7 +221,7 @@ with tab1:
                             total_words_all = sum(len(str(r.get("Text", "")).strip().split()) for r in recent_records)
                             limited_records = limit_records_by_word_count(recent_records, "Text", max_words=800)
                             if total_words_all > 800:
-                                st.warning(f"Your file contains {total_words_all} words. Only the most recent messages up to 800 words will be saved and analyzed. Messages beyond this limit will be excluded.")
+                                st.warning(f"This system only analyses the most recent rows up to 800 words. Rows beyond this limit will be excluded.")
                             if not limited_records:
                                 st.warning("⚠️ No messages were kept within the 800-word limit.")
                                 st.stop()
@@ -597,7 +597,7 @@ with tab1:
                         total_words_all = sum(len(str(r.get("Text", "")).strip().split()) for r in records)
                         records = limit_records_by_word_count(records, "Text", max_words=800)
                         if total_words_all > 800:
-                            st.warning(f"Your file contains {total_words_all} words. Only the most recent rows up to 800 words will be saved and analyzed. Rows beyond this limit will be excluded.")
+                            st.warning(f"This system only analyses the most recent rows up to 800 words. Rows beyond this limit will be excluded.")
                         records = sorted(records, key=lambda r: (r['Date'], r['Time']), reverse=False)
 
                         # Step 4: Initialize models
