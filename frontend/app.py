@@ -54,8 +54,7 @@ refresh_token = _qp_first("refresh_token", "")
 
 if type_param == "recovery" and access_token:
     
-    session_ok, session_error = auth_service.set_session(access_token, refresh_token)
-    if session_ok:
+    if auth_service.set_session(access_token, refresh_token):
         st.success("Password reset verified! Please set your new password.")
         
         with st.form("reset_password_form"):
@@ -80,7 +79,7 @@ if type_param == "recovery" and access_token:
                     st.error(f"Error updating password: {error}")
         st.stop() # Stop execution of the rest of the app
     else:
-        st.error(session_error or "Invalid or expired password reset link.")
+        st.error("Invalid or expired password reset link.")
         st.stop()
 
 # 2. Handle Hash Fragment (Pre-Redirect)
