@@ -262,18 +262,17 @@ class AuthService:
             bool: True if session set successfully
         """
         try:
-            self.supabase.auth.set_session(access_token, refresh_token)
+            session_response = self.supabase.auth.set_session(access_token, refresh_token)
             
-            # Update local session state
-            user_response = self.supabase.auth.get_user()
-            if user_response and user_response.user:
+            # Update local session state using the response (more reliable in server-side env)
+            if session_response and session_response.user:
                 # Check if institution staff is approved before allowing session
-                profile = self._fetch_user_profile(user_response.user.id)
+                profile = self._fetch_user_profile(session_response.user.id)
                 if profile and profile.get('account_type') == 'institution':
                     try:
                         staff_info = self.supabase.table('institution_staff')\
                             .select('status')\
-                            .eq('user_id', user_response.user.id)\
+                            .eq('user_id', session_response.user.id)\
                             .execute()
                         
                         if staff_info.data and len(staff_info.data) > 0:
@@ -287,8 +286,8 @@ class AuthService:
                 
                 st.session_state.authenticated = True
                 st.session_state.user = {
-                    'id': user_response.user.id,
-                    'email': user_response.user.email,
+                    'id': session_response.user.id,
+                    'email': session_response.user.email,
                     'access_token': access_token
                 }
                 
