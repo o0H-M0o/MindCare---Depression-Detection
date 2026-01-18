@@ -287,7 +287,7 @@ with tab1:
                             progress.progress((i / max(total, 1)) * 0.5)
 
                         # Step 4b: Analyze combined messages once (chunked if too long)
-                        status.write("🔍 Analyzing combined messages...")
+                        status.write("🔍 Analyzing  text... Please stay on the page while analysis completes.")
 
                         if not entries_to_analyze:
                             st.warning("⚠️ No messages were saved for analysis.")
@@ -639,7 +639,7 @@ with tab1:
 
                             progress.progress((i / max(total, 1)) * 0.5)
 
-                        status.write("🔍 Analyzing combined rows...")
+                        status.write("🔍 Analyzing text... Please stay on the page while analysis completes.")
 
                         if not entries_to_analyze:
                             st.warning("⚠️ No rows were saved for analysis.")
@@ -1064,7 +1064,7 @@ with tab2:
                 sentiment_result = None
                 
                 with result_placeholder:
-                    with st.spinner("🔍 Analyzing your entry... Please stay on the page while analysis completes."):
+                    with st.spinner("🔍 Analyzing text... Please stay on the page while analysis completes."):
                         try:
                             # Clean the text for analysis
                             cleaned_text = clean_entry(journal_text)
