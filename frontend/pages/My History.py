@@ -379,7 +379,40 @@ try:
                 file_key = entry.get('uploaded_file', 'Unknown')
                 grouped[file_key].append(entry)
 
-            for file_name, entries in grouped.items():
+            # Sort files by upload timestamp (extracted from filename)
+            def get_file_timestamp(file_name):
+                """Extract timestamp from filename for sorting"""
+                if '_' in file_name and len(file_name) > 16:
+                    timestamp_part = file_name[-15:]  # Last 15 chars should be timestamp
+                    try:
+                        # Parse YYYYMMDD_HHMMSS format
+                        year = int(timestamp_part[:4])
+                        month = int(timestamp_part[4:6])
+                        day = int(timestamp_part[6:8])
+                        hour = int(timestamp_part[9:11])
+                        minute = int(timestamp_part[11:13])
+                        second = int(timestamp_part[13:])
+                        return (year, month, day, hour, minute, second)
+                    except (ValueError, IndexError):
+                        return (0, 0, 0, 0, 0, 0)  # Default for unparseable
+                return (0, 0, 0, 0, 0, 0)  # Default for files without timestamp
+
+            # Sort files by timestamp (newest first or oldest first based on sort_order)
+            sorted_files = sorted(
+                grouped.keys(),
+                key=get_file_timestamp,
+                reverse=(sort_order == "Newest First")
+            )
+
+            for file_name in sorted_files:
+                entries = grouped[file_name]
+
+                # Sort entries within each file by date and time
+                entries = sorted(
+                    entries,
+                    key=lambda x: (x['date'], x.get('time', '00:00:00')),
+                    reverse=(sort_order == "Newest First")
+                )
                 # Extract original file name and timestamp
                 if '_' in file_name and len(file_name) > 16:
                     file_base = file_name[:-16]

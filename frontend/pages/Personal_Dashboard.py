@@ -356,7 +356,7 @@ def _weekly_sentiment(df_sessions: pd.DataFrame) -> pd.DataFrame:
 # -----------------------------
 st.set_page_config(
     page_title="Personal Dashboard",
-    page_icon="🌿",
+    page_icon="💡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -410,7 +410,7 @@ ai_recommendation_text = ""
 # -----------------------------
 # HEADER
 # -----------------------------
-st.title("🌿 Personal Well-being Dashboard")
+st.title("💡 My Personal Dashboard")
 st.caption("A calm summary of patterns across your sessions. Not a diagnosis.")
 
 # Global chart filter (affects all charts across tabs)
@@ -712,7 +712,7 @@ with support_tab:
                 csv_bytes = df_to_csv_bytes(csv_df)
                 if csv_bytes:
                     st.download_button(
-                        label="📄 Download CSV",
+                        label="📄 Download CSV", 
                         data=csv_bytes,
                         file_name=f"personal_dashboard_{user_name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                         mime="text/csv",

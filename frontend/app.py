@@ -261,10 +261,10 @@ def home_page():
                 st.switch_page("pages/My History.py")
 
         with col3:
-            st.info("**🌿 My Well-being Overview**")
+            st.info("**💡 My Personal Dashboard**")
             st.write("Charts and trends of your well-being built from your entries.")
             if st.button("Open Dashboard", key="home_open_dashboard"):
-                st.switch_page("pages/Dashboard.py")
+                st.switch_page("pages/Personal_Dashboard.py")
         
         st.divider()
         
