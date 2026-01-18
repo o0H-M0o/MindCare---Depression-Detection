@@ -250,7 +250,7 @@ class AuthService:
         except Exception as e:
             return False, str(e)
 
-    def set_session(self, access_token: str, refresh_token: str) -> bool:
+    def set_session(self, access_token: str, refresh_token: str) -> tuple[bool, Optional[str]]:
         """
         Set the session from tokens (e.g. from recovery link)
         
@@ -259,8 +259,14 @@ class AuthService:
             refresh_token: Refresh token
             
         Returns:
-            bool: True if session set successfully
+            Tuple of (success: bool, error_message: Optional[str])
         """
+        if not access_token or not refresh_token:
+            return False, "Missing recovery tokens. Please request a new reset link."
+
+        if len(refresh_token) < 20:
+            return False, "Recovery token looks incomplete. Please request a new reset link."
+
         try:
             self.supabase.auth.set_session(access_token, refresh_token)
             
@@ -279,11 +285,11 @@ class AuthService:
                         if staff_info.data and len(staff_info.data) > 0:
                             staff_status = staff_info.data[0].get('status', 'pending')
                             if staff_status != 'approved':
-                                return False  # Block session for unapproved staff
+                                return False, "Institution staff account is not approved yet."
                         else:
-                            return False  # Block session if staff registration not found
-                    except Exception as e:
-                        return False  # Block session on error
+                            return False, "Institution staff registration not found."
+                    except Exception:
+                        return False, "Error verifying institution staff status."
                 
                 st.session_state.authenticated = True
                 st.session_state.user = {
@@ -295,11 +301,11 @@ class AuthService:
                 # Store user profile
                 st.session_state.user_profile = profile
                 
-                return True
-            return False
+                return True, None
+            return False, "Unable to verify recovery session."
         except Exception as e:
             print(f"Error setting session: {e}")
-            return False
+            return False, str(e)
 
     def logout(self):
         """Sign out current user and clear session"""

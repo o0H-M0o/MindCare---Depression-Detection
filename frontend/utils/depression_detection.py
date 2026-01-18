@@ -21,30 +21,6 @@ import numpy as np
 import pandas as pd
 
 
-# Symptom code to name mapping for AI recommendations
-BDI_SYMPTOM_NAMES = {
-    "Q1": "sadness",
-    "Q2": "discouragement about the future",
-    "Q3": "feeling like a failure",
-    "Q4": "loss of pleasure",
-    "Q5": "feelings of guilt",
-    "Q6": "feelings of being punished",
-    "Q7": "disappointment in oneself",
-    "Q8": "self-criticism or self-blame",
-    "Q9": "thoughts of killing oneself",
-    "Q10": "crying",
-    "Q11": "restlessness or agitation",
-    "Q12": "loss of interest in things",
-    "Q13": "difficulty making decisions",
-    "Q14": "feelings of worthlessness",
-    "Q15": "loss of energy",
-    "Q16": "changes in sleeping",
-    "Q17": "irritability",
-    "Q18": "changes in appetite",
-    "Q19": "difficulty concentrating",
-    "Q20": "tiredness or fatigue",
-    "Q21": "loss of interest in sex"
-}
 BDI_MILD_THRESHOLD = 10  # Single entry is considered low mood if >= 10
 STREAK_MIN = 5           # Number of consecutive entries >= 10 to signal concern
 WINDOW_DAYS = 30         # Recent window for pattern detection
@@ -313,11 +289,11 @@ def analyze_depression(df: pd.DataFrame, window_days: int = WINDOW_DAYS) -> Dict
 		depression_detected = (proportion >= 0.5) or streak
 
 	# ----------------------------
-	# Severity from most recent 7 entries (current state)
+	# Severity from recent window entries (current state)
 	# ----------------------------
-	last7 = work.tail(7)["bdi_total_score"].astype(float)
-	avg_last7 = float(last7.mean()) if len(last7) > 0 else float("nan")
-	overall_severity = _label_severity(avg_last7)
+	recent_scores = recent["bdi_total_score"].astype(float)
+	avg_recent = float(recent_scores.mean()) if len(recent_scores) > 0 else float("nan")
+	overall_severity = _label_severity(avg_recent)
 
 	# ----------------------------
 	# Trend direction (earlier half vs recent half) using all valid entries
@@ -369,9 +345,9 @@ def analyze_depression(df: pd.DataFrame, window_days: int = WINDOW_DAYS) -> Dict
 		if totals:
 			avgs = {k: (totals[k] / counts[k]) for k in totals if counts.get(k, 0) > 0}
 			if avgs:
-				# Top 3 by average
+				# Top 5 by average
 				top_symptoms = [
-					name for name, _ in sorted(avgs.items(), key=lambda kv: kv[1], reverse=True)[:3]
+					name for name, _ in sorted(avgs.items(), key=lambda kv: kv[1], reverse=True)[:5]
 				]
 
 	# ----------------------------

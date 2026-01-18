@@ -325,7 +325,7 @@ try:
 
     if symptom_counts:
         df_sym = pd.DataFrame(
-            sorted(symptom_counts.items(), key=lambda kv: kv[1], reverse=True)[:10],
+            sorted(symptom_counts.items(), key=lambda kv: kv[1], reverse=True)[:5],
             columns=['Symptom', 'Users']
         )
         fig_top_symptoms = px.bar(
@@ -335,7 +335,16 @@ try:
             orientation='h',
             color_discrete_sequence=['#1f77b4'],
         )
-        fig_top_symptoms.update_layout(height=320, margin=dict(l=30, r=30, t=30, b=30), showlegend=False)
+        fig_top_symptoms.update_layout(
+            height=320,
+            margin=dict(l=30, r=30, t=30, b=30),
+            showlegend=False,
+            yaxis={
+                'categoryorder': 'array',
+                'categoryarray': df_sym['Symptom'].tolist(),
+                'autorange': 'reversed'
+            }
+        )
 except Exception:
     fig_top_symptoms = None
 
